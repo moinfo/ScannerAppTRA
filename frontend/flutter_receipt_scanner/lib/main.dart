@@ -107,7 +107,7 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('TRA Receipt Scanner'),
+        title: const Text('Moinfo Scanner App'),
       ),
       body: Consumer<ReceiptProvider>(
         builder: (context, receipt, _) => buildBody(receipt),

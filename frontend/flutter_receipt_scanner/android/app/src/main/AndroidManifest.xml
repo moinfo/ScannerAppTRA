@@ -9,7 +9,7 @@
         </intent>
     </queries>
    <application
-        android:label="flutter_receipt_scanner"
+        android:label="Moinfo Scanner App"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
