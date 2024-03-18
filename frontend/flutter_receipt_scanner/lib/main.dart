@@ -738,7 +738,7 @@ class _ScanPageState extends State<ScanPage> {
 
     try {
       http.Response response = await http.get(
-        Uri.parse('http://172.105.152.159:4000/receipt/$code/$time'),
+        Uri.parse('http://74.207.224.132:4000/receipt/$code/$time'),
         headers: {
           'Accept': 'application/json',
         },
@@ -1035,7 +1035,7 @@ class ErrorWidget extends StatelessWidget {
         children: [
           Text(
             getMessage(apiRequestStatus),
-            style: Theme.of(context).textTheme.bodyText1,
+            style: Theme.of(context).textTheme.bodyLarge,
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 10),
