@@ -155,12 +155,13 @@ class ReceiptDetailPage extends StatelessWidget {
   });
 
   final Receipt receipt;
-
   final moneyFormat = NumberFormat.currency(name: '');
+  final TextStyle receiptTextStyle = const TextStyle(
+    fontSize: 12.0,
+  );
 
   void _launchUrl(BuildContext context, String path) async {
-    bool canLaunch =
-        !await canLaunchUrl(Uri.parse('https://verify.tra.go.tz/$path'));
+    bool canLaunch = !await canLaunchUrl(Uri.parse('https://verify.tra.go.tz/$path'));
 
     if (canLaunch) {
       if (!context.mounted) return;
@@ -198,35 +199,25 @@ class ReceiptDetailPage extends StatelessWidget {
     }
   }
 
-  final TextStyle receiptTextStyle = const TextStyle(
-    fontSize: 12.0,
-    // fontFamily: 'Merchant',
-  );
   @override
   Widget build(BuildContext context) {
-    var media = MediaQuery.of(context).size;
     return Scaffold(
-      // backgroundColor: const Color.fromARGB(255, 96, 140, 147),
       appBar: AppBar(
         title: Text(
           receipt.companyName,
           style: TextStyle(
-            fontSize: media.width * 0.042666,
+            fontSize: MediaQuery.of(context).size.width * 0.042666,
           ),
         ),
         actions: [
-          receipt.verificationCode != null
-              ? IconButton(
-                  onPressed: () async {
-                    if (receipt.time != null) {
-                      String path =
-                          "${receipt.verificationCode}_${receipt.time!.replaceAll(':', '')}";
-                      _launchUrl(context, path);
-                    }
-                  },
-                  icon: const Icon(Icons.language),
-                )
-              : const SizedBox(),
+          if (receipt.verificationCode != null)
+            IconButton(
+              onPressed: () => _launchUrl(
+                context,
+                "${receipt.verificationCode}_${receipt.time?.replaceAll(':', '')}",
+              ),
+              icon: const Icon(Icons.language),
+            ),
         ],
       ),
       body: SingleChildScrollView(
@@ -234,265 +225,309 @@ class ReceiptDetailPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text(
-                    receipt.companyName,
-                    textAlign: TextAlign.center,
-                    style: receiptTextStyle,
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    receipt.poBox ?? '',
-                    textAlign: TextAlign.center,
-                    style: receiptTextStyle,
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    'MOBILE: ${receipt.mobile}',
-                    textAlign: TextAlign.center,
-                    style: receiptTextStyle,
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    'TIN: ${receipt.tin}',
-                    textAlign: TextAlign.center,
-                    style: receiptTextStyle,
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    'VRN: ${receipt.vrn}',
-                    textAlign: TextAlign.center,
-                    style: receiptTextStyle,
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    'SERIAL NO: ${receipt.serialNumber}',
-                    textAlign: TextAlign.center,
-                    style: receiptTextStyle,
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    'UIN: ${receipt.uin}',
-                    textAlign: TextAlign.center,
-                    style: receiptTextStyle,
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    'TAX OFFICE: ${receipt.taxOffice}',
-                    textAlign: TextAlign.center,
-                    style: receiptTextStyle,
-                  ),
-                ],
-              ),
-            ),
+            _buildCompanyHeader(),
             const SizedBox(height: 20),
-            Text(
-              'CUSTOMER NAME: ${receipt.customer?.name}',
-              textAlign: TextAlign.start,
-              style: receiptTextStyle,
-            ),
-            const SizedBox(height: 5),
-            Text(
-              'CUSTOMER ID TYPE: ${receipt.customer?.idType}',
-              textAlign: TextAlign.start,
-              style: receiptTextStyle,
-            ),
-            const SizedBox(height: 5),
-            Text(
-              'CUSTOMER ID: ${receipt.customer?.id}',
-              textAlign: TextAlign.start,
-              style: receiptTextStyle,
-            ),
-            const SizedBox(height: 5),
-            Text(
-              'CUSTOMER MOBILE: ${receipt.customer?.mobile}',
-              textAlign: TextAlign.start,
-              style: receiptTextStyle,
-            ),
+            _buildCustomerInfo(),
             const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'RECEIPT NO:',
-                  style: receiptTextStyle,
-                ),
-                Text(
-                  receipt.number ?? '',
-                  style: receiptTextStyle,
-                ),
-              ],
-            ),
-            const SizedBox(height: 5),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Z NUMBER: ',
-                  style: receiptTextStyle,
-                ),
-                Text(
-                  receipt.zNumber ?? '',
-                  style: receiptTextStyle,
-                ),
-              ],
-            ),
-            const SizedBox(height: 5),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'DATE: ',
-                      style: receiptTextStyle,
-                    ),
-                    Text(
-                      receipt.date ?? '',
-                      style: receiptTextStyle,
-                    ),
-                  ],
-                ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'TIME: ',
-                      style: receiptTextStyle,
-                    ),
-                    Text(
-                      receipt.time ?? '',
-                      style: receiptTextStyle,
-                    ),
-                  ],
-                ),
-              ],
-            ),
+            _buildReceiptInfo(),
             const SizedBox(height: 20),
-            const SizedBox(height: 10),
-            Table(
-              columnWidths: const {
-                0: FlexColumnWidth(3),
-                1: FlexColumnWidth(1),
-                2: FlexColumnWidth(2),
-              },
-              children: [
-                TableRow(
-                  children: [
-                    Text(
-                      'DESCRIPTION',
-                      style: receiptTextStyle,
-                    ),
-                    Text(
-                      'QTY',
-                      style: receiptTextStyle,
-                      textAlign: TextAlign.right,
-                    ),
-                    Text(
-                      'AMOUNT',
-                      style: receiptTextStyle,
-                      textAlign: TextAlign.right,
-                    ),
-                  ],
-                ),
-                if (receipt.items != null && receipt.items!.isNotEmpty)
-                  ...buildItemsRows(receipt.items)
-              ],
-            ),
+            _buildItemsTable(),
+            if (receipt.adjustments?.isNotEmpty ?? false) ...[
+              const SizedBox(height: 20),
+              Text('Invoice Adjustments', style: receiptTextStyle),
+              _buildAdjustmentsTable(),
+            ],
+            if (receipt.payments?.isNotEmpty ?? false) ...[
+              const SizedBox(height: 20),
+              Text('Invoice Payments', style: receiptTextStyle),
+              _buildPaymentsTable(),
+            ],
             const SizedBox(height: 20),
-            Table(
-              children: [
-                TableRow(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 5),
-                      child:
-                          Text('TOTAL EXCL OF TAX:', style: receiptTextStyle),
-                    ),
-                    Text(
-                      moneyFormat.format(receipt.totalExlcOfTax),
-                      style: receiptTextStyle,
-                      textAlign: TextAlign.right,
-                    ),
-                  ],
-                ),
-                TableRow(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 5),
-                      child: Text('TOTAL DISCOUNT:', style: receiptTextStyle),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 5),
-                      child: Text(
-                        moneyFormat.format(receipt.totalDiscount),
-                        style: receiptTextStyle,
-                        textAlign: TextAlign.right,
-                      ),
-                    ),
-                  ],
-                ),
-                TableRow(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 5),
-                      child: Text('TOTAL TAX:', style: receiptTextStyle),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 5.0),
-                      child: Text(
-                        moneyFormat.format(receipt.totalTax),
-                        style: receiptTextStyle,
-                        textAlign: TextAlign.right,
-                      ),
-                    ),
-                  ],
-                ),
-                TableRow(
-                  children: [
-                    Text('TOTAL INCL OF TAX:', style: receiptTextStyle),
-                    Text(
-                      moneyFormat.format(receipt.totalInclOfTax),
-                      style: receiptTextStyle,
-                      textAlign: TextAlign.right,
-                    ),
-                  ],
-                ),
-              ],
-            )
+            _buildTotalsTable(),
           ],
         ),
       ),
     );
   }
 
-  List<TableRow> buildItemsRows(List<Item>? items) {
-    return receipt.items!
-        .map(
-          (item) => TableRow(
+  Widget _buildCompanyHeader() {
+    return Center(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            receipt.companyName,
+            textAlign: TextAlign.center,
+            style: receiptTextStyle,
+          ),
+          const SizedBox(height: 5),
+          Text(
+            receipt.poBox ?? '',
+            textAlign: TextAlign.center,
+            style: receiptTextStyle,
+          ),
+          const SizedBox(height: 5),
+          Text(
+            'MOBILE: ${receipt.mobile}',
+            textAlign: TextAlign.center,
+            style: receiptTextStyle,
+          ),
+          const SizedBox(height: 5),
+          Text(
+            'TIN: ${receipt.tin}',
+            textAlign: TextAlign.center,
+            style: receiptTextStyle,
+          ),
+          const SizedBox(height: 5),
+          Text(
+            'VRN: ${receipt.vrn}',
+            textAlign: TextAlign.center,
+            style: receiptTextStyle,
+          ),
+          const SizedBox(height: 5),
+          Text(
+            'SERIAL NO: ${receipt.serialNumber}',
+            textAlign: TextAlign.center,
+            style: receiptTextStyle,
+          ),
+          const SizedBox(height: 5),
+          Text(
+            'UIN: ${receipt.uin}',
+            textAlign: TextAlign.center,
+            style: receiptTextStyle,
+          ),
+          const SizedBox(height: 5),
+          Text(
+            'TAX OFFICE: ${receipt.taxOffice}',
+            textAlign: TextAlign.center,
+            style: receiptTextStyle,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCustomerInfo() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'CUSTOMER NAME: ${receipt.customer?.name}',
+          style: receiptTextStyle,
+        ),
+        const SizedBox(height: 5),
+        Text(
+          'CUSTOMER ID TYPE: ${receipt.customer?.idType}',
+          style: receiptTextStyle,
+        ),
+        const SizedBox(height: 5),
+        Text(
+          'CUSTOMER ID: ${receipt.customer?.id}',
+          style: receiptTextStyle,
+        ),
+        const SizedBox(height: 5),
+        Text(
+          'CUSTOMER MOBILE: ${receipt.customer?.mobile}',
+          style: receiptTextStyle,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReceiptInfo() {
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('RECEIPT NO:', style: receiptTextStyle),
+            Text(receipt.number ?? '', style: receiptTextStyle),
+          ],
+        ),
+        const SizedBox(height: 5),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Z NUMBER:', style: receiptTextStyle),
+            Text(receipt.zNumber ?? '', style: receiptTextStyle),
+          ],
+        ),
+        const SizedBox(height: 5),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Text('DATE: ', style: receiptTextStyle),
+                Text(receipt.date ?? '', style: receiptTextStyle),
+              ],
+            ),
+            Row(
+              children: [
+                Text('TIME: ', style: receiptTextStyle),
+                Text(receipt.time ?? '', style: receiptTextStyle),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildItemsTable() {
+    return Table(
+      columnWidths: const {
+        0: FlexColumnWidth(3),
+        1: FlexColumnWidth(1),
+        2: FlexColumnWidth(2),
+      },
+      children: [
+        TableRow(
+          children: [
+            Text('DESCRIPTION', style: receiptTextStyle),
+            Text(
+              'QTY',
+              style: receiptTextStyle,
+              textAlign: TextAlign.right,
+            ),
+            Text(
+              'AMOUNT',
+              style: receiptTextStyle,
+              textAlign: TextAlign.right,
+            ),
+          ],
+        ),
+        if (receipt.items != null && receipt.items!.isNotEmpty)
+          ...receipt.items!.map((item) => TableRow(
             children: [
-              Text(
-                item.description ?? '',
-                style: receiptTextStyle,
-              ),
+              Text(item.description ?? '', style: receiptTextStyle),
               Text(
                 '${item.quantity}',
                 style: receiptTextStyle,
                 textAlign: TextAlign.right,
               ),
               Text(
-                '${item.amount}',
+                moneyFormat.format(item.amount),
                 style: receiptTextStyle,
                 textAlign: TextAlign.right,
               ),
             ],
+          )).toList(),
+      ],
+    );
+  }
+
+  Widget _buildTotalsTable() {
+    return Table(
+      children: [
+        _buildTableRow('TOTAL EXCL OF TAX:', receipt.totalExlcOfTax),
+        if (receipt.kwhCharge != null)
+          _buildTableRow('KWH Charge:', receipt.kwhCharge),
+        if (receipt.kvaCharge != null)
+          _buildTableRow('KVA Charge:', receipt.kvaCharge),
+        if (receipt.serviceCharge != null)
+          _buildTableRow('Service Charge:', receipt.serviceCharge),
+        if (receipt.interestAmount != null)
+          _buildTableRow('Interest Amount:', receipt.interestAmount),
+        if (receipt.taxRate != null)
+          _buildTableRow('TAX RATE (${receipt.taxRate}%):', receipt.totalTax),
+        _buildTableRow('TOTAL TAX:', receipt.totalTax),
+        if (receipt.reaCharge != null)
+          _buildTableRow('REA:', receipt.reaCharge),
+        if (receipt.ewuraCharge != null)
+          _buildTableRow('EWURA:', receipt.ewuraCharge),
+        if (receipt.propertyTax != null)
+          _buildTableRow('Property Tax:', receipt.propertyTax),
+        _buildTableRow('TOTAL INCL OF TAX:', receipt.totalInclOfTax),
+      ],
+    );
+  }
+
+  Widget _buildAdjustmentsTable() {
+    return Table(
+      columnWidths: const {
+        0: FlexColumnWidth(1),
+        1: FlexColumnWidth(2),
+        2: FlexColumnWidth(1),
+      },
+      children: [
+        TableRow(
+          children: [
+            Text('Type', style: receiptTextStyle),
+            Text('Description', style: receiptTextStyle),
+            Text(
+              'Amount',
+              style: receiptTextStyle,
+              textAlign: TextAlign.right,
+            ),
+          ],
+        ),
+        ...receipt.adjustments!.map((adjustment) => TableRow(
+          children: [
+            Text(adjustment.type, style: receiptTextStyle),
+            Text(adjustment.description, style: receiptTextStyle),
+            Text(
+              moneyFormat.format(adjustment.amount),
+              style: receiptTextStyle,
+              textAlign: TextAlign.right,
+            ),
+          ],
+        )).toList(),
+      ],
+    );
+  }
+
+  Widget _buildPaymentsTable() {
+    return Table(
+      columnWidths: const {
+        0: FlexColumnWidth(1),
+        1: FlexColumnWidth(2),
+        2: FlexColumnWidth(1),
+      },
+      children: [
+        TableRow(
+          children: [
+            Text('Type', style: receiptTextStyle),
+            Text('Description', style: receiptTextStyle),
+            Text(
+              'Amount',
+              style: receiptTextStyle,
+              textAlign: TextAlign.right,
+            ),
+          ],
+        ),
+        ...receipt.payments!.map((payment) => TableRow(
+          children: [
+            Text(payment.type, style: receiptTextStyle),
+            Text(payment.description, style: receiptTextStyle),
+            Text(
+              moneyFormat.format(payment.amount),
+              style: receiptTextStyle,
+              textAlign: TextAlign.right,
+            ),
+          ],
+        )).toList(),
+      ],
+    );
+  }
+
+  TableRow _buildTableRow(String label, double? value) {
+    return TableRow(
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 5),
+          child: Text(label, style: receiptTextStyle),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 5),
+          child: Text(
+            value != null ? moneyFormat.format(value) : '-',
+            style: receiptTextStyle,
+            textAlign: TextAlign.right,
           ),
-        )
-        .toList();
+        ),
+      ],
+    );
   }
 }
 
@@ -720,8 +755,7 @@ class _ScanPageState extends State<ScanPage> {
     );
   }
 
-  Future scrape(
-      String code, String time, ReceiptProvider receiptProvider) async {
+  Future scrape(String code, String time, ReceiptProvider receiptProvider) async {
     setState(() {
       receiptUrlFound = true;
       _code = code;
@@ -737,6 +771,8 @@ class _ScanPageState extends State<ScanPage> {
     }
 
     try {
+      print('Attempting to fetch receipt from: http://50.116.44.162:4000/receipt/$code/$time');
+
       http.Response response = await http.get(
         Uri.parse('http://50.116.44.162:4000/receipt/$code/$time'),
         headers: {
@@ -744,9 +780,23 @@ class _ScanPageState extends State<ScanPage> {
         },
       ).timeout(const Duration(seconds: 30));
 
-      dynamic responseBody = jsonDecode(response.body);
+      print('Response status code: ${response.statusCode}');
+      print('Response body: ${response.body}');
 
-      if (response.statusCode == 200 && responseBody.isNotEmpty) {
+      if (response.statusCode == 200 && response.body.isNotEmpty) {
+        dynamic responseBody = jsonDecode(response.body);
+
+        // Map the items to match the expected format
+        if (responseBody['items'] != null) {
+          responseBody['items'] = responseBody['items'].map((item) => {
+            'item_description': item['description'],
+            'item_qty': item['qty'],
+            'item_amount': item['amount'],
+          }).toList();
+        }
+
+        print('Attempting to upload to Wajenzi server...');
+
         http.Response serverResponse = await http.post(
           Uri.parse('https://wajenziprosystem.co.tz/api/add_receipt'),
           body: jsonEncode(responseBody),
@@ -755,6 +805,9 @@ class _ScanPageState extends State<ScanPage> {
             'Content-Type': 'application/json',
           },
         );
+
+        print('Wajenzi server response status: ${serverResponse.statusCode}');
+        print('Wajenzi server response body: ${serverResponse.body}');
 
         if (serverResponse.statusCode == 200) {
           setState(() {
@@ -769,19 +822,22 @@ class _ScanPageState extends State<ScanPage> {
         } else {
           setState(() {
             receiptUrlFound = false;
-            errMsg = 'Failed to upload data to lemuru servers';
+            errMsg = 'Failed to upload data to wajenzi servers: ${serverResponse.statusCode} - ${serverResponse.body}';
           });
         }
       } else {
         setState(() {
           receiptUrlFound = false;
-          errMsg = 'TRA scrape failed';
+          errMsg = 'TRA scrape failed: Status ${response.statusCode} - ${response.body}';
         });
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('Error during scraping: $e');
+      print('Stack trace: $stackTrace');
+
       setState(() {
         receiptUrlFound = false;
-        errMsg = 'TRA scrape failed';
+        errMsg = 'TRA scrape failed: ${e.toString()}';
       });
     }
   }
@@ -815,6 +871,19 @@ class Receipt {
   double? totalDiscount;
   double? totalTax;
   double? totalInclOfTax;
+
+  // New fields for TANESCO receipts
+  double? kwhCharge;
+  double? kvaCharge;
+  double? serviceCharge;
+  double? interestAmount;
+  double? reaCharge;
+  double? ewuraCharge;
+  double? propertyTax;
+  double? taxRate;
+  List<InvoiceAdjustment>? adjustments;
+  List<InvoicePayment>? payments;
+
   Customer? customer;
   List<Item>? items;
 
@@ -837,6 +906,16 @@ class Receipt {
     this.totalDiscount,
     this.totalTax,
     this.totalInclOfTax,
+    this.kwhCharge,
+    this.kvaCharge,
+    this.serviceCharge,
+    this.interestAmount,
+    this.reaCharge,
+    this.ewuraCharge,
+    this.propertyTax,
+    this.taxRate,
+    this.adjustments,
+    this.payments,
     this.customer,
     this.items,
   });
@@ -849,10 +928,29 @@ class Receipt {
       'customer_mobile': json['customer_mobile'],
     });
 
-    List<Item> items = json['items'].isNotEmpty
-        ? List.generate(json['items'].length,
-            (index) => Item.fromJson(json['items'][index]))
-        : [];
+    List<Item> items = [];
+    if (json['items'] != null && json['items'].isNotEmpty) {
+      items = List.generate(
+        json['items'].length,
+            (index) => Item.fromJson(json['items'][index]),
+      );
+    }
+
+    List<InvoiceAdjustment>? adjustments;
+    if (json['adjustments'] != null) {
+      adjustments = List.generate(
+        json['adjustments'].length,
+            (index) => InvoiceAdjustment.fromJson(json['adjustments'][index]),
+      );
+    }
+
+    List<InvoicePayment>? payments;
+    if (json['payments'] != null) {
+      payments = List.generate(
+        json['payments'].length,
+            (index) => InvoicePayment.fromJson(json['payments'][index]),
+      );
+    }
 
     return Receipt(
       id: json['id'],
@@ -869,12 +967,86 @@ class Receipt {
       number: json['receipt_number'],
       zNumber: json['receipt_z_number'],
       verificationCode: json['receipt_verification_code'],
-      totalExlcOfTax: double.parse(json['receipt_total_excl_of_tax']),
-      totalDiscount: double.parse(json['receipt_total_discount']),
-      totalTax: double.parse(json['receipt_total_tax']),
-      totalInclOfTax: double.parse(json['receipt_total_incl_of_tax']),
+      totalExlcOfTax: json['receipt_total_excl_of_tax'] != null
+          ? double.parse(json['receipt_total_excl_of_tax'])
+          : null,
+      totalDiscount: json['receipt_total_discount'] != null
+          ? double.parse(json['receipt_total_discount'])
+          : null,
+      totalTax: json['receipt_total_tax'] != null
+          ? double.parse(json['receipt_total_tax'])
+          : null,
+      totalInclOfTax: json['receipt_total_incl_of_tax'] != null
+          ? double.parse(json['receipt_total_incl_of_tax'])
+          : null,
+      kwhCharge: json['kwh_charge'] != null
+          ? double.parse(json['kwh_charge'])
+          : null,
+      kvaCharge: json['kva_charge'] != null
+          ? double.parse(json['kva_charge'])
+          : null,
+      serviceCharge: json['service_charge'] != null
+          ? double.parse(json['service_charge'])
+          : null,
+      interestAmount: json['interest_amount'] != null
+          ? double.parse(json['interest_amount'])
+          : null,
+      reaCharge: json['rea_charge'] != null
+          ? double.parse(json['rea_charge'])
+          : null,
+      ewuraCharge: json['ewura_charge'] != null
+          ? double.parse(json['ewura_charge'])
+          : null,
+      propertyTax: json['property_tax'] != null
+          ? double.parse(json['property_tax'])
+          : null,
+      taxRate: json['tax_rate'] != null
+          ? double.parse(json['tax_rate'])
+          : null,
+      adjustments: adjustments,
+      payments: payments,
       customer: customer,
       items: items,
+    );
+  }
+}
+
+class InvoiceAdjustment {
+  String type;
+  String description;
+  double amount;
+
+  InvoiceAdjustment({
+    required this.type,
+    required this.description,
+    required this.amount,
+  });
+
+  factory InvoiceAdjustment.fromJson(Map<String, dynamic> json) {
+    return InvoiceAdjustment(
+      type: json['type'],
+      description: json['description'],
+      amount: double.parse(json['amount']),
+    );
+  }
+}
+
+class InvoicePayment {
+  String type;
+  String description;
+  double amount;
+
+  InvoicePayment({
+    required this.type,
+    required this.description,
+    required this.amount,
+  });
+
+  factory InvoicePayment.fromJson(Map<String, dynamic> json) {
+    return InvoicePayment(
+      type: json['type'],
+      description: json['description'],
+      amount: double.parse(json['amount']),
     );
   }
 }
