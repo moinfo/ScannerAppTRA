@@ -107,7 +107,7 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Moinfo Scanner App'),
+        title: const Text('Wajenzi Pro Scanner App'),
       ),
       body: Consumer<ReceiptProvider>(
         builder: (context, receipt, _) => buildBody(receipt),
@@ -738,7 +738,7 @@ class _ScanPageState extends State<ScanPage> {
 
     try {
       http.Response response = await http.get(
-        Uri.parse('http://74.207.224.132:4000/receipt/$code/$time'),
+        Uri.parse('http://50.116.44.162:4000/receipt/$code/$time'),
         headers: {
           'Accept': 'application/json',
         },
@@ -748,7 +748,7 @@ class _ScanPageState extends State<ScanPage> {
 
       if (response.statusCode == 200 && responseBody.isNotEmpty) {
         http.Response serverResponse = await http.post(
-          Uri.parse('https://lemuru.co.tz/api/add_receipt'),
+          Uri.parse('https://wajenziprosystem.co.tz/api/add_receipt'),
           body: jsonEncode(responseBody),
           headers: {
             'Accept': 'application/json',
@@ -939,7 +939,7 @@ class ReceiptProvider extends ChangeNotifier {
 
     try {
       http.Response response = await http.get(
-        Uri.parse('https://lemuru.co.tz/api/receipts'),
+        Uri.parse('https://wajenziprosystem.co.tz/api/receipts'),
         headers: {
           'Accept': 'application/json',
         },
