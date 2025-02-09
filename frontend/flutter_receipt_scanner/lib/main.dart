@@ -785,12 +785,9 @@ class _ScanPageState extends State<ScanPage> {
   }
 
   Future scrape(String code, String time, ReceiptProvider receiptProvider) async {
-    setState(() {
-      receiptUrlFound = true;
-      _code = code;
-      _time = time;
-    });
+    int retries = 3;
 
+    // Check if receipt already exists
     if (receiptProvider.checkIfReceiptExists(code)) {
       setState(() {
         receiptUrlFound = false;
@@ -799,76 +796,165 @@ class _ScanPageState extends State<ScanPage> {
       return;
     }
 
-    try {
-      print('Attempting to fetch receipt from: http://50.116.44.162:4000/receipt/$code/$time');
+    for (int i = 0; i < retries; i++) {
+      try {
+        setState(() {
+          receiptUrlFound = true;
+          _code = code;
+          _time = time;
+          errMsg = '';
+        });
 
-      http.Response response = await http.get(
-        Uri.parse('http://50.116.44.162:4000/receipt/$code/$time'),
-        headers: {
-          'Accept': 'application/json',
-        },
-      ).timeout(const Duration(seconds: 30));
+        print('Attempt ${i + 1} of $retries');
+        print('Scraping receipt: code=$code, time=$time');
 
-      print('Response status code: ${response.statusCode}');
-      print('Response body: ${response.body}');
-
-      if (response.statusCode == 200 && response.body.isNotEmpty) {
-        dynamic responseBody = jsonDecode(response.body);
-
-        // Map the items to match the expected format
-        if (responseBody['items'] != null) {
-          responseBody['items'] = responseBody['items'].map((item) => {
-            'item_description': item['description'],
-            'item_qty': item['qty'],
-            'item_amount': item['amount'],
-          }).toList();
-        }
-
-        print('Attempting to upload to Wajenzi server...');
-
-        http.Response serverResponse = await http.post(
-          Uri.parse('https://wajenziprosystem.co.tz/api/add_receipt'),
-          body: jsonEncode(responseBody),
+        // First request to scraping server
+        http.Response response = await http.get(
+          Uri.parse('http://50.116.44.162:4000/receipt/$code/$time'),
           headers: {
             'Accept': 'application/json',
-            'Content-Type': 'application/json',
           },
-        );
+        ).timeout(const Duration(seconds: 30));
 
-        print('Wajenzi server response status: ${serverResponse.statusCode}');
-        print('Wajenzi server response body: ${serverResponse.body}');
+        print('Response status: ${response.statusCode}');
+        print('Response body: ${response.body}');
 
-        if (serverResponse.statusCode == 200) {
-          setState(() {
-            receiptUrlFound = false;
-            _code = '';
-            _time = '';
-          });
+        if (response.statusCode == 200 && response.body.isNotEmpty) {
+          dynamic responseBody = jsonDecode(response.body);
 
-          if (mounted) {
-            Navigator.of(context).pop();
+          // Validate required fields
+          if (!validateRequiredFields(responseBody)) {
+            print('Missing required fields, retrying...');
+            if (i == retries - 1) {
+              setState(() {
+                receiptUrlFound = false;
+                errMsg = 'Failed to get complete receipt data';
+              });
+              return;
+            }
+            continue;
+          }
+
+          // Map the items to match the expected format
+          if (responseBody['items'] != null) {
+            responseBody['items'] = responseBody['items'].map((item) => {
+              'item_description': item['description'],
+              'item_qty': item['qty'],
+              'item_amount': item['amount'],
+            }).toList();
+          }
+
+          print('Attempting to upload to Wajenzi server...');
+
+          // Second request to Wajenzi server
+          http.Response serverResponse = await http.post(
+            Uri.parse('https://wajenziprosystem.co.tz/api/add_receipt'),
+            body: jsonEncode(responseBody),
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+          ).timeout(const Duration(seconds: 30));
+
+          print('Wajenzi server response status: ${serverResponse.statusCode}');
+          print('Wajenzi server response body: ${serverResponse.body}');
+
+          if (serverResponse.statusCode == 200) {
+            setState(() {
+              receiptUrlFound = false;
+              _code = '';
+              _time = '';
+              errMsg = '';
+            });
+
+            if (mounted) {
+              Navigator.of(context).pop();
+            }
+            return;
+          } else {
+            throw Exception('Failed to upload data to wajenzi servers: ${serverResponse.statusCode} - ${serverResponse.body}');
           }
         } else {
+          throw Exception('TRA scrape failed: Status ${response.statusCode} - ${response.body}');
+        }
+      } on TimeoutException catch (e) {
+        print('Timeout error during attempt ${i + 1}: $e');
+        if (i == retries - 1) {
           setState(() {
             receiptUrlFound = false;
-            errMsg = 'Failed to upload data to wajenzi servers: ${serverResponse.statusCode} - ${serverResponse.body}';
+            errMsg = 'Request timed out. Please try again.';
           });
+          return;
         }
-      } else {
-        setState(() {
-          receiptUrlFound = false;
-          errMsg = 'TRA scrape failed: Status ${response.statusCode} - ${response.body}';
-        });
-      }
-    } catch (e, stackTrace) {
-      print('Error during scraping: $e');
-      print('Stack trace: $stackTrace');
+      } on FormatException catch (e) {
+        print('Format error during attempt ${i + 1}: $e');
+        if (i == retries - 1) {
+          setState(() {
+            receiptUrlFound = false;
+            errMsg = 'Invalid data format received. Please try again.';
+          });
+          return;
+        }
+      } catch (e, stackTrace) {
+        print('Error during attempt ${i + 1}: $e');
+        print('Stack trace: $stackTrace');
 
-      setState(() {
-        receiptUrlFound = false;
-        errMsg = 'TRA scrape failed: ${e.toString()}';
-      });
+        if (i == retries - 1) {
+          setState(() {
+            receiptUrlFound = false;
+            errMsg = e.toString();
+          });
+          return;
+        }
+
+        // Wait before retrying
+        await Future.delayed(const Duration(seconds: 2));
+      }
     }
+  }
+
+  bool validateRequiredFields(Map<String, dynamic> data) {
+    final requiredFields = [
+      'company_name',
+      'tin',
+      'vrn',
+      'serial_no',
+      'uin',
+      'tax_office'
+    ];
+
+    final missingFields = requiredFields.where((field) =>
+    data[field] == null || data[field].toString().isEmpty
+    ).toList();
+
+    if (missingFields.isNotEmpty) {
+      print('Missing required fields: $missingFields');
+      return false;
+    }
+
+    // Validate items array if present
+    if (data['items'] != null) {
+      if (data['items'] is! List) {
+        print('Items is not a list');
+        return false;
+      }
+
+      for (var item in data['items']) {
+        if (item is! Map<String, dynamic>) {
+          print('Item is not a map: $item');
+          return false;
+        }
+
+        if (!item.containsKey('description') ||
+            !item.containsKey('qty') ||
+            !item.containsKey('amount')) {
+          print('Item missing required fields: $item');
+          return false;
+        }
+      }
+    }
+
+    return true;
   }
 
   @override
