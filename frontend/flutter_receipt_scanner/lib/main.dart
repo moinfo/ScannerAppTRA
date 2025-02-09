@@ -96,7 +96,6 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-
   @override
   initState() {
     super.initState();
@@ -106,7 +105,6 @@ class _MyHomePageState extends State<MyHomePage> {
       Provider.of<ReceiptProvider>(context, listen: false).fetchReceipts();
     });
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -120,16 +118,15 @@ class _MyHomePageState extends State<MyHomePage> {
       floatingActionButton: FloatingActionButton(
         onPressed: () =>
             Navigator.pushNamed(context, ScanPage.route).then((value) async {
-          await Provider.of<ReceiptProvider>(context, listen: false)
-              .fetchReceipts();
-        }),
+              await Provider.of<ReceiptProvider>(context, listen: false)
+                  .fetchReceipts();
+            }),
         child: const Icon(Icons.qr_code_scanner_rounded),
       ),
     );
   }
 
   Widget buildBody(ReceiptProvider receiptProvider) {
-
     debugPrint('Current API status: ${receiptProvider.apiRequestStatus}');
 
     if (receiptProvider.apiRequestStatus == APIRequestStatus.error ||
@@ -184,7 +181,7 @@ class ReceiptDetailPage extends StatelessWidget {
   });
 
   final Receipt receipt;
-  final moneyFormat = NumberFormat.currency(name: '');
+  final moneyFormat = NumberFormat.currency(name: '', decimalDigits: 2);
   final TextStyle receiptTextStyle = const TextStyle(
     fontSize: 12.0,
   );
@@ -341,22 +338,22 @@ class ReceiptDetailPage extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'CUSTOMER NAME: ${receipt.customer?.name}',
+          'CUSTOMER NAME: ${receipt.customer?.name ?? ''}',
           style: receiptTextStyle,
         ),
         const SizedBox(height: 5),
         Text(
-          'CUSTOMER ID TYPE: ${receipt.customer?.idType}',
+          'CUSTOMER ID TYPE: ${receipt.customer?.idType ?? ''}',
           style: receiptTextStyle,
         ),
         const SizedBox(height: 5),
         Text(
-          'CUSTOMER ID: ${receipt.customer?.id}',
+          'CUSTOMER ID: ${receipt.customer?.id ?? ''}',
           style: receiptTextStyle,
         ),
         const SizedBox(height: 5),
         Text(
-          'CUSTOMER MOBILE: ${receipt.customer?.mobile}',
+          'CUSTOMER MOBILE: ${receipt.customer?.mobile ?? 'n/a'}',
           style: receiptTextStyle,
         ),
       ],
@@ -431,12 +428,12 @@ class ReceiptDetailPage extends StatelessWidget {
             children: [
               Text(item.description ?? '', style: receiptTextStyle),
               Text(
-                '${item.quantity}',
+                '${item.quantity ?? 1}',
                 style: receiptTextStyle,
                 textAlign: TextAlign.right,
               ),
               Text(
-                moneyFormat.format(item.amount),
+                moneyFormat.format(item.amount ?? 0),
                 style: receiptTextStyle,
                 textAlign: TextAlign.right,
               ),
@@ -450,23 +447,27 @@ class ReceiptDetailPage extends StatelessWidget {
     return Table(
       children: [
         _buildTableRow('TOTAL EXCL OF TAX:', receipt.totalExlcOfTax),
-        if (receipt.kwhCharge != null)
-          _buildTableRow('KWH Charge:', receipt.kwhCharge),
-        if (receipt.kvaCharge != null)
-          _buildTableRow('KVA Charge:', receipt.kvaCharge),
-        if (receipt.serviceCharge != null)
-          _buildTableRow('Service Charge:', receipt.serviceCharge),
-        if (receipt.interestAmount != null)
-          _buildTableRow('Interest Amount:', receipt.interestAmount),
-        if (receipt.taxRate != null)
-          _buildTableRow('TAX RATE (${receipt.taxRate}%):', receipt.totalTax),
+        if (receipt.isTanesco) ...[
+          if (receipt.kwhCharge != null && receipt.kwhCharge! > 0)
+            _buildTableRow('KWH Charge:', receipt.kwhCharge),
+          if (receipt.kvaCharge != null && receipt.kvaCharge! > 0)
+            _buildTableRow('KVA Charge:', receipt.kvaCharge),
+          if (receipt.serviceCharge != null && receipt.serviceCharge! > 0)
+            _buildTableRow('Service Charge:', receipt.serviceCharge),
+          if (receipt.interestAmount != null && receipt.interestAmount! > 0)
+            _buildTableRow('Interest Amount:', receipt.interestAmount),
+          if (receipt.taxRate != null)
+            _buildTableRow('TAX RATE (${receipt.taxRate}%):', receipt.totalTax),
+        ],
         _buildTableRow('TOTAL TAX:', receipt.totalTax),
-        if (receipt.reaCharge != null)
-          _buildTableRow('REA:', receipt.reaCharge),
-        if (receipt.ewuraCharge != null)
-          _buildTableRow('EWURA:', receipt.ewuraCharge),
-        if (receipt.propertyTax != null)
-          _buildTableRow('Property Tax:', receipt.propertyTax),
+        if (receipt.isTanesco) ...[
+          if (receipt.reaCharge != null && receipt.reaCharge! > 0)
+            _buildTableRow('REA:', receipt.reaCharge),
+          if (receipt.ewuraCharge != null && receipt.ewuraCharge! > 0)
+            _buildTableRow('EWURA:', receipt.ewuraCharge),
+          if (receipt.propertyTax != null && receipt.propertyTax! > 0)
+            _buildTableRow('Property Tax:', receipt.propertyTax),
+        ],
         _buildTableRow('TOTAL INCL OF TAX:', receipt.totalInclOfTax),
       ],
     );
@@ -657,8 +658,7 @@ class _ScanPageState extends State<ScanPage> {
                                 child: IconButton(
                                   onPressed: () => controller.switchCamera(),
                                   icon: ValueListenableBuilder(
-                                    valueListenable:
-                                        controller.cameraFacingState,
+                                    valueListenable: controller.cameraFacingState,
                                     builder: (context, state, child) {
                                       switch (state) {
                                         case CameraFacing.front:
@@ -681,66 +681,65 @@ class _ScanPageState extends State<ScanPage> {
             ),
             receiptUrlFound
                 ? Container(
-                    height: media.height * 1,
-                    width: media.width * 1,
-                    decoration: const BoxDecoration(
-                      color: Color.fromARGB(125, 0, 0, 0),
-                    ),
-                    child: Center(
-                      child: Container(
-                        padding: EdgeInsets.all(media.width * 0.05),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius:
-                              BorderRadius.circular(media.width * 0.04),
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text('Please wait...'),
-                            SizedBox(height: media.width * 0.05),
-                            const CircularProgressIndicator(),
-                          ],
-                        ),
-                      ),
-                    ),
-                  )
+              height: media.height * 1,
+              width: media.width * 1,
+              decoration: const BoxDecoration(
+                color: Color.fromARGB(125, 0, 0, 0),
+              ),
+              child: Center(
+                child: Container(
+                  padding: EdgeInsets.all(media.width * 0.05),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(media.width * 0.04),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Please wait...'),
+                      SizedBox(height: media.width * 0.05),
+                      const CircularProgressIndicator(),
+                    ],
+                  ),
+                ),
+              ),
+            )
                 : const SizedBox(),
             errMsg.isNotEmpty
                 ? Container(
-                    height: media.height * 1,
-                    width: media.width * 1,
-                    decoration: const BoxDecoration(
-                      color: Color.fromARGB(125, 0, 0, 0),
+              height: media.height * 1,
+              width: media.width * 1,
+              decoration: const BoxDecoration(
+                color: Color.fromARGB(125, 0, 0, 0),
+              ),
+              child: Center(
+                child: Container(
+                  padding: EdgeInsets.all(media.width * 0.05),
+                  width: media.width * 0.8,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(
+                      media.width * 0.03,
                     ),
-                    child: Center(
-                      child: Container(
-                        padding: EdgeInsets.all(media.width * 0.05),
-                        width: media.width * 0.8,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(
-                            media.width * 0.03,
-                          ),
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(errMsg),
-                            SizedBox(height: media.width * 0.05),
-                            ElevatedButton(
-                              onPressed: errMsg == 'Receipt already scanned!'
-                                  ? _handleReceiptAlreadyExists
-                                  : _handleReceiptScrapeFailed,
-                              child: Text(errMsg == 'Receipt already scanned!'
-                                  ? 'Close'
-                                  : 'Try Again'),
-                            ),
-                          ],
-                        ),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(errMsg),
+                      SizedBox(height: media.width * 0.05),
+                      ElevatedButton(
+                        onPressed: errMsg == 'Receipt already scanned!'
+                            ? _handleReceiptAlreadyExists
+                            : _handleReceiptScrapeFailed,
+                        child: Text(errMsg == 'Receipt already scanned!'
+                            ? 'Close'
+                            : 'Try Again'),
                       ),
-                    ),
-                  )
+                    ],
+                  ),
+                ),
+              ),
+            )
                 : const SizedBox(),
           ],
         ),
@@ -784,7 +783,7 @@ class _ScanPageState extends State<ScanPage> {
     );
   }
 
-  Future scrape(String code, String time, ReceiptProvider receiptProvider) async {
+  Future<void> scrape(String code, String time, ReceiptProvider receiptProvider) async {
     int retries = 3;
 
     // Check if receipt already exists
@@ -833,15 +832,6 @@ class _ScanPageState extends State<ScanPage> {
               return;
             }
             continue;
-          }
-
-          // Map the items to match the expected format
-          if (responseBody['items'] != null) {
-            responseBody['items'] = responseBody['items'].map((item) => {
-              'item_description': item['description'],
-              'item_qty': item['qty'],
-              'item_amount': item['amount'],
-            }).toList();
           }
 
           print('Attempting to upload to Wajenzi server...');
@@ -932,28 +922,6 @@ class _ScanPageState extends State<ScanPage> {
       return false;
     }
 
-    // Validate items array if present
-    if (data['items'] != null) {
-      if (data['items'] is! List) {
-        print('Items is not a list');
-        return false;
-      }
-
-      for (var item in data['items']) {
-        if (item is! Map<String, dynamic>) {
-          print('Item is not a map: $item');
-          return false;
-        }
-
-        if (!item.containsKey('description') ||
-            !item.containsKey('qty') ||
-            !item.containsKey('amount')) {
-          print('Item missing required fields: $item');
-          return false;
-        }
-      }
-    }
-
     return true;
   }
 
@@ -963,9 +931,6 @@ class _ScanPageState extends State<ScanPage> {
     super.dispose();
   }
 }
-
-List<Receipt> getReceiptsFromJson(List<dynamic> receipts) => List.generate(
-    receipts.length, (index) => Receipt.fromJson(receipts[index]));
 
 class Receipt {
   int id;
@@ -987,7 +952,7 @@ class Receipt {
   double? totalTax;
   double? totalInclOfTax;
 
-  // New fields for TANESCO receipts
+  // TANESCO specific fields
   double? kwhCharge;
   double? kvaCharge;
   double? serviceCharge;
@@ -1001,6 +966,11 @@ class Receipt {
 
   Customer? customer;
   List<Item>? items;
+
+  bool get isTanesco =>
+      companyName.toLowerCase().contains('tanzania electric supply') ||
+          companyName.toLowerCase().contains('tanesco') ||
+          kwhCharge != null;
 
   Receipt({
     required this.id,
@@ -1036,6 +1006,23 @@ class Receipt {
   });
 
   factory Receipt.fromJson(Map<String, dynamic> json) {
+    // Helper function to safely parse double values
+    double? parseDouble(dynamic value) {
+      if (value == null) return null;
+      if (value is num) return value.toDouble();
+      if (value is String) {
+        try {
+          final cleanValue = value.replaceAll(',', '').trim();
+          if (cleanValue.isEmpty) return null;
+          return double.parse(cleanValue);
+        } catch (e) {
+          print('Error parsing double value: $value');
+          return null;
+        }
+      }
+      return null;
+    }
+
     Customer customer = Customer.fromJson({
       'customer_name': json['customer_name'],
       'customer_id_type': json['customer_id_type'],
@@ -1044,32 +1031,44 @@ class Receipt {
     });
 
     List<Item> items = [];
-    if (json['items'] != null && json['items'].isNotEmpty) {
-      items = List.generate(
-        json['items'].length,
-            (index) => Item.fromJson(json['items'][index]),
-      );
+    if (json['items'] != null && json['items'] is List) {
+      items = (json['items'] as List).map((item) {
+        try {
+          return Item.fromJson(item);
+        } catch (e) {
+          print('Error parsing item: $e');
+          return null;
+        }
+      }).whereType<Item>().toList();
     }
 
     List<InvoiceAdjustment>? adjustments;
-    if (json['adjustments'] != null) {
-      adjustments = List.generate(
-        json['adjustments'].length,
-            (index) => InvoiceAdjustment.fromJson(json['adjustments'][index]),
-      );
+    if (json['adjustments'] != null && json['adjustments'] is List) {
+      adjustments = (json['adjustments'] as List).map((adj) {
+        try {
+          return InvoiceAdjustment.fromJson(adj);
+        } catch (e) {
+          print('Error parsing adjustment: $e');
+          return null;
+        }
+      }).whereType<InvoiceAdjustment>().toList();
     }
 
     List<InvoicePayment>? payments;
-    if (json['payments'] != null) {
-      payments = List.generate(
-        json['payments'].length,
-            (index) => InvoicePayment.fromJson(json['payments'][index]),
-      );
+    if (json['payments'] != null && json['payments'] is List) {
+      payments = (json['payments'] as List).map((payment) {
+        try {
+          return InvoicePayment.fromJson(payment);
+        } catch (e) {
+          print('Error parsing payment: $e');
+          return null;
+        }
+      }).whereType<InvoicePayment>().toList();
     }
 
     return Receipt(
       id: json['id'],
-      companyName: json['company_name'],
+      companyName: json['company_name'] ?? '',
       poBox: json['p_o_box'],
       mobile: json['mobile'],
       tin: json['tin'],
@@ -1082,42 +1081,19 @@ class Receipt {
       number: json['receipt_number'],
       zNumber: json['receipt_z_number'],
       verificationCode: json['receipt_verification_code'],
-      totalExlcOfTax: json['receipt_total_excl_of_tax'] != null
-          ? double.parse(json['receipt_total_excl_of_tax'])
-          : null,
-      totalDiscount: json['receipt_total_discount'] != null
-          ? double.parse(json['receipt_total_discount'])
-          : null,
-      totalTax: json['receipt_total_tax'] != null
-          ? double.parse(json['receipt_total_tax'])
-          : null,
-      totalInclOfTax: json['receipt_total_incl_of_tax'] != null
-          ? double.parse(json['receipt_total_incl_of_tax'])
-          : null,
-      kwhCharge: json['kwh_charge'] != null
-          ? double.parse(json['kwh_charge'])
-          : null,
-      kvaCharge: json['kva_charge'] != null
-          ? double.parse(json['kva_charge'])
-          : null,
-      serviceCharge: json['service_charge'] != null
-          ? double.parse(json['service_charge'])
-          : null,
-      interestAmount: json['interest_amount'] != null
-          ? double.parse(json['interest_amount'])
-          : null,
-      reaCharge: json['rea_charge'] != null
-          ? double.parse(json['rea_charge'])
-          : null,
-      ewuraCharge: json['ewura_charge'] != null
-          ? double.parse(json['ewura_charge'])
-          : null,
-      propertyTax: json['property_tax'] != null
-          ? double.parse(json['property_tax'])
-          : null,
-      taxRate: json['tax_rate'] != null
-          ? double.parse(json['tax_rate'])
-          : null,
+      totalExlcOfTax: parseDouble(json['receipt_total_excl_of_tax']),
+      totalDiscount: parseDouble(json['receipt_total_discount']),
+      totalTax: parseDouble(json['receipt_total_tax']),
+      totalInclOfTax: parseDouble(json['receipt_total_incl_of_tax']),
+      // TANESCO specific fields
+      kwhCharge: parseDouble(json['kwh_charge']),
+      kvaCharge: parseDouble(json['kva_charge']),
+      serviceCharge: parseDouble(json['service_charge']),
+      interestAmount: parseDouble(json['interest_amount']),
+      reaCharge: parseDouble(json['rea_charge'] ?? json['receipt_rea']),
+      ewuraCharge: parseDouble(json['ewura_charge'] ?? json['receipt_ewura']),
+      propertyTax: parseDouble(json['property_tax'] ?? json['receipt_property_tax']),
+      taxRate: parseDouble(json['tax_rate']),
       adjustments: adjustments,
       payments: payments,
       customer: customer,
@@ -1139,9 +1115,9 @@ class InvoiceAdjustment {
 
   factory InvoiceAdjustment.fromJson(Map<String, dynamic> json) {
     return InvoiceAdjustment(
-      type: json['type'],
-      description: json['description'],
-      amount: double.parse(json['amount']),
+      type: json['type'] ?? 'ADJUSTMENT',
+      description: json['description'] ?? '',
+      amount: double.parse(json['amount']?.toString() ?? '0'),
     );
   }
 }
@@ -1159,9 +1135,9 @@ class InvoicePayment {
 
   factory InvoicePayment.fromJson(Map<String, dynamic> json) {
     return InvoicePayment(
-      type: json['type'],
-      description: json['description'],
-      amount: double.parse(json['amount']),
+      type: json['type'] ?? 'PAYMENT',
+      description: json['description'] ?? '',
+      amount: double.parse(json['amount']?.toString() ?? '0'),
     );
   }
 }
@@ -1202,9 +1178,9 @@ class Item {
 
   factory Item.fromJson(Map<String, dynamic> json) {
     return Item(
-      description: json['description'],
-      quantity: json['qty'],
-      amount: double.parse(json['amount']),
+      description: json['description'] ?? json['item_description'],
+      quantity: json['qty'] ?? json['item_qty'] ?? 1,
+      amount: double.tryParse(json['amount']?.toString() ?? json['item_amount']?.toString() ?? '0'),
     );
   }
 }
@@ -1212,7 +1188,7 @@ class Item {
 class ReceiptProvider extends ChangeNotifier {
   List<Receipt> _receipts = [];
   APIRequestStatus _apiRequestStatus = APIRequestStatus.loading;
-  String _lastError = ''; // Add error message storage
+  String _lastError = '';
 
   List<Receipt> get receipts => _receipts;
   APIRequestStatus get apiRequestStatus => _apiRequestStatus;
@@ -1250,7 +1226,6 @@ class ReceiptProvider extends ChangeNotifier {
         debugPrint('Response body length: ${response.body.length}');
         debugPrint('First 100 characters of response: ${response.body.substring(0, min(100, response.body.length))}');
 
-        // Fix: Parse the nested structure correctly
         Map<String, dynamic> jsonResponse = jsonDecode(response.body);
         List<dynamic> responseBody = jsonResponse['receipts']['data'] as List<dynamic>;
         debugPrint('Successfully decoded JSON. Number of items: ${responseBody.length}');
@@ -1302,7 +1277,6 @@ class ReceiptProvider extends ChangeNotifier {
     return exists;
   }
 
-  // Helper method to safely parse response
   List<Receipt> getReceiptsFromJson(List<dynamic> json) {
     debugPrint('Starting to parse ${json.length} receipts');
     List<Receipt> parsedReceipts = [];
