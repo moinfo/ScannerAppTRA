@@ -10,6 +10,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'dart:math' show min;
 
 void main() {
   runApp(const MyApp());
@@ -95,13 +96,17 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+
   @override
   initState() {
     super.initState();
+    debugPrint('initState called');
     SchedulerBinding.instance.addPostFrameCallback((_) {
+      debugPrint('Post frame callback triggered');
       Provider.of<ReceiptProvider>(context, listen: false).fetchReceipts();
     });
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -124,26 +129,50 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Widget buildBody(ReceiptProvider receiptProvider) {
+
+    debugPrint('Current API status: ${receiptProvider.apiRequestStatus}');
+
+    if (receiptProvider.apiRequestStatus == APIRequestStatus.error ||
+        receiptProvider.apiRequestStatus == APIRequestStatus.networkError) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('Error: ${receiptProvider.lastError}'),
+            ElevatedButton(
+              onPressed: () => receiptProvider.fetchReceipts(),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
     return BodyBuilder(
       apiRequestStatus: receiptProvider.apiRequestStatus,
       body: buildBodyList(receiptProvider),
       onRefresh: () async {
+        debugPrint('Refresh triggered');
         await receiptProvider.fetchReceipts();
       },
     );
   }
 
   Widget buildBodyList(ReceiptProvider receiptProvider) {
+    debugPrint('Receipts length: ${receiptProvider.receipts.length}');
     if (receiptProvider.receipts.isNotEmpty) {
       return ListView.builder(
         itemCount: receiptProvider.receipts.length,
-        itemBuilder: (context, int index) => ReceiptCard(
-          receipt: receiptProvider.receipts[index],
-          index: index,
-        ),
+        itemBuilder: (context, int index) {
+          debugPrint('Building item at index: $index');
+          return ReceiptCard(
+            receipt: receiptProvider.receipts[index],
+            index: index,
+          );
+        },
       );
     }
 
+    debugPrint('No receipts found');
     return const NoItems(errMsg: 'No receipts found.');
   }
 }
@@ -1097,54 +1126,113 @@ class Item {
 class ReceiptProvider extends ChangeNotifier {
   List<Receipt> _receipts = [];
   APIRequestStatus _apiRequestStatus = APIRequestStatus.loading;
+  String _lastError = ''; // Add error message storage
 
   List<Receipt> get receipts => _receipts;
   APIRequestStatus get apiRequestStatus => _apiRequestStatus;
+  String get lastError => _lastError;
 
   ReceiptProvider() {
+    debugPrint('ReceiptProvider initialized');
     fetchReceipts();
   }
 
   Future<void> fetchReceipts() async {
+    debugPrint('Starting fetchReceipts()');
     _apiRequestStatus = APIRequestStatus.loading;
     notifyListeners();
 
     try {
-      http.Response response = await http.get(
+      debugPrint('Attempting API call to: https://wajenziprosystem.co.tz/api/receipts');
+      final response = await http.get(
         Uri.parse('https://wajenziprosystem.co.tz/api/receipts'),
         headers: {
           'Accept': 'application/json',
         },
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          debugPrint('API call timed out after 30 seconds');
+          throw TimeoutException('Request timed out');
+        },
       );
 
+      debugPrint('API Response Status Code: ${response.statusCode}');
+      debugPrint('API Response Headers: ${response.headers}');
+
       if (response.statusCode == 200) {
-        List<dynamic> responseBody = jsonDecode(response.body);
+        debugPrint('Response body length: ${response.body.length}');
+        debugPrint('First 100 characters of response: ${response.body.substring(0, min(100, response.body.length))}');
+
+        // Fix: Parse the nested structure correctly
+        Map<String, dynamic> jsonResponse = jsonDecode(response.body);
+        List<dynamic> responseBody = jsonResponse['receipts']['data'] as List<dynamic>;
+        debugPrint('Successfully decoded JSON. Number of items: ${responseBody.length}');
+
         List<Receipt> nwReceipts = getReceiptsFromJson(responseBody);
+        debugPrint('Successfully parsed ${nwReceipts.length} receipts');
+
         _receipts = nwReceipts;
         _apiRequestStatus = APIRequestStatus.loaded;
+        _lastError = '';
         notifyListeners();
+        debugPrint('Successfully updated state with new receipts');
       } else {
+        _lastError = 'Server returned ${response.statusCode}: ${response.body}';
+        debugPrint('API Error: $_lastError');
         _apiRequestStatus = APIRequestStatus.error;
         notifyListeners();
       }
-    } catch (e) {
-      if (e is SocketException || e is TimeoutException) {
-        _apiRequestStatus = APIRequestStatus.networkError;
-        notifyListeners();
-      } else {
-        _apiRequestStatus = APIRequestStatus.error;
-        notifyListeners();
-      }
+    } on SocketException catch (e) {
+      _lastError = 'Network error: ${e.message}';
+      debugPrint('SocketException: $_lastError');
+      _apiRequestStatus = APIRequestStatus.networkError;
+      notifyListeners();
+    } on TimeoutException catch (e) {
+      _lastError = 'Request timed out: ${e.message}';
+      debugPrint('TimeoutException: $_lastError');
+      _apiRequestStatus = APIRequestStatus.networkError;
+      notifyListeners();
+    } on FormatException catch (e) {
+      _lastError = 'Data format error: ${e.message}';
+      debugPrint('FormatException: $_lastError');
+      debugPrint('Response that caused error: ${e.source}');
+      _apiRequestStatus = APIRequestStatus.error;
+      notifyListeners();
+    } catch (e, stackTrace) {
+      _lastError = 'Unexpected error: $e';
+      debugPrint('Unexpected error: $e');
+      debugPrint('Stack trace: $stackTrace');
+      _apiRequestStatus = APIRequestStatus.error;
+      notifyListeners();
     }
   }
 
   bool checkIfReceiptExists(String code) {
-    var receipts =
-        _receipts.where((receipt) => receipt.verificationCode == code);
+    debugPrint('Checking for receipt with code: $code');
+    var receipts = _receipts.where((receipt) => receipt.verificationCode == code);
+    bool exists = receipts.isNotEmpty;
+    debugPrint('Receipt exists: $exists');
+    return exists;
+  }
 
-    if (receipts.isNotEmpty) return true;
+  // Helper method to safely parse response
+  List<Receipt> getReceiptsFromJson(List<dynamic> json) {
+    debugPrint('Starting to parse ${json.length} receipts');
+    List<Receipt> parsedReceipts = [];
 
-    return false;
+    for (var i = 0; i < json.length; i++) {
+      try {
+        var receipt = Receipt.fromJson(json[i]);
+        parsedReceipts.add(receipt);
+      } catch (e) {
+        debugPrint('Error parsing receipt at index $i: $e');
+        debugPrint('Problematic JSON: ${json[i]}');
+      }
+    }
+
+    debugPrint('Successfully parsed ${parsedReceipts.length} out of ${json.length} receipts');
+    return parsedReceipts;
   }
 }
 
