@@ -110,7 +110,7 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Wajenzi Pro Scanner App'),
+        title: const Text('Lemuru Scanner App'),
       ),
       body: Consumer<ReceiptProvider>(
         builder: (context, receipt, _) => buildBody(receipt),
@@ -834,11 +834,11 @@ class _ScanPageState extends State<ScanPage> {
             continue;
           }
 
-          print('Attempting to upload to Wajenzi server...');
+          print('Attempting to upload to Lemuru server...');
 
-          // Second request to Wajenzi server
+          // Second request to Lemuru server
           http.Response serverResponse = await http.post(
-            Uri.parse('https://wajenziprosystem.co.tz/api/add_receipt'),
+            Uri.parse('https://lemuru.co.tz/api/add_receipt'),
             body: jsonEncode(responseBody),
             headers: {
               'Accept': 'application/json',
@@ -846,8 +846,8 @@ class _ScanPageState extends State<ScanPage> {
             },
           ).timeout(const Duration(seconds: 30));
 
-          print('Wajenzi server response status: ${serverResponse.statusCode}');
-          print('Wajenzi server response body: ${serverResponse.body}');
+          print('Lemuru server response status: ${serverResponse.statusCode}');
+          print('Lemuru server response body: ${serverResponse.body}');
 
           if (serverResponse.statusCode == 200) {
             setState(() {
@@ -862,7 +862,7 @@ class _ScanPageState extends State<ScanPage> {
             }
             return;
           } else {
-            throw Exception('Failed to upload data to wajenzi servers: ${serverResponse.statusCode} - ${serverResponse.body}');
+            throw Exception('Failed to upload data to Lemuru servers: ${serverResponse.statusCode} - ${serverResponse.body}');
           }
         } else {
           throw Exception('TRA scrape failed: Status ${response.statusCode} - ${response.body}');
@@ -1205,9 +1205,9 @@ class ReceiptProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      debugPrint('Attempting API call to: https://wajenziprosystem.co.tz/api/receipts');
+      debugPrint('Attempting API call to: https://lemuru.co.tz/api/receipts');
       final response = await http.get(
-        Uri.parse('https://wajenziprosystem.co.tz/api/receipts'),
+        Uri.parse('https://lemuru.co.tz/api/receipts'),
         headers: {
           'Accept': 'application/json',
         },

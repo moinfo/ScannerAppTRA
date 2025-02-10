@@ -9,7 +9,7 @@
         </intent>
     </queries>
    <application
-        android:label="Wajenzi Pro Scanner App"
+        android:label="Lemuru Scanner App"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
