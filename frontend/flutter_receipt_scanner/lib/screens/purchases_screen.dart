@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_receipt_scanner/providers/app_state_provider.dart';
 import 'package:flutter_receipt_scanner/providers/purchases_provider.dart';
-import 'package:flutter_receipt_scanner/providers/receipt_provider.dart';
-import 'package:flutter_receipt_scanner/services/purchase_service.dart';
+// import 'package:flutter_receipt_scanner/models/purchase.dart';
 import 'package:flutter_receipt_scanner/utils/api_request_status.dart';
-import 'package:flutter_receipt_scanner/widgets/data_table_widget.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+
+import '../services/purchase_service.dart';
 
 class PurchasesScreen extends StatefulWidget {
   const PurchasesScreen({Key? key}) : super(key: key);
@@ -17,238 +16,152 @@ class PurchasesScreen extends StatefulWidget {
 
 class _PurchasesScreenState extends State<PurchasesScreen> {
   final _searchController = TextEditingController();
+  final _dateFormat = DateFormat('dd MMM yyyy');
+  final _moneyFormat = NumberFormat.currency(symbol: 'TZS ', decimalDigits: 2);
+  bool _isFiltering = false;
   DateTime? _startDate;
   DateTime? _endDate;
-  final _moneyFormat = NumberFormat.currency(symbol: 'TZS ', decimalDigits: 2);
-  final _vatRate = 0.18; // 18% VAT
-  
-  // Columns for the data table
-  final List<String> _columns = ['id', 'date', 'supplier', 'amount', 'status'];
-  final List<String> _columnNames = ['ID', 'Date', 'Supplier', 'Amount', 'Status'];
-
-  // List to store formatted purchases data for the data table
-  List<Map<String, dynamic>> _formattedPurchasesData = [];
 
   @override
   void initState() {
     super.initState();
+    // Fetch purchases on init
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadPurchasesData();
+      if (mounted) {
+        Provider.of<PurchasesProvider>(context, listen: false).fetchPurchases();
+      }
     });
   }
 
-  Future<void> _loadPurchasesData() async {
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // Select date range
+  Future<void> _selectDateRange(BuildContext context) async {
+    final initialDateRange = DateTimeRange(
+      start: _startDate ?? DateTime.now().subtract(const Duration(days: 7)),
+      end: _endDate ?? DateTime.now(),
+    );
+
+    final newDateRange = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2025),
+      initialDateRange: initialDateRange,
+    );
+
+    if (newDateRange != null) {
+      setState(() {
+        _startDate = newDateRange.start;
+        _endDate = newDateRange.end;
+      });
+
+      // Apply date filter
+      _applyFilters();
+    }
+  }
+
+  // Apply filters (search term and date range)
+  void _applyFilters() {
     final purchasesProvider = Provider.of<PurchasesProvider>(context, listen: false);
-    
-    // Fetch purchases data
-    await purchasesProvider.fetchPurchases(
+    purchasesProvider.fetchPurchases(
       startDate: _startDate,
       endDate: _endDate,
       searchTerm: _searchController.text.isNotEmpty ? _searchController.text : null,
     );
-
-    // Format the data for the DataTableWidget
-    _updateFormattedData();
   }
 
-  void _updateFormattedData() {
-    final purchasesProvider = Provider.of<PurchasesProvider>(context, listen: false);
-    
-    setState(() {
-      _formattedPurchasesData = purchasesProvider.purchases.map((purchase) {
-        final vat = purchase.amount * _vatRate;
-        final total = purchase.amount + vat;
-        
-        // Map Purchase objects to the format expected by DataTableWidget
-        return {
-          'id': purchase.id.toString(),
-          'date': purchase.date,
-          'supplier': purchase.supplier,
-          'amount': _moneyFormat.format(purchase.amount),
-          'status': purchase.status,
-          // Additional fields for details display
-          'raw_amount': purchase.amount,
-          'raw_vat': vat,
-          'raw_total': total,
-          'original_purchase': purchase, // Store the original Purchase object
-          'receipt_scanned': purchase.receiptId != null,
-        };
-      }).toList();
-    });
-  }
-
-  void _handleSearch(String query) {
-    _loadPurchasesData();
-  }
-
-  void _handleDateRangeChanged(DateTime? start, DateTime? end) {
-    setState(() {
-      _startDate = start;
-      _endDate = end;
-    });
-    _loadPurchasesData();
-  }
-
-  Future<void> _showPurchaseDetails(Map<String, dynamic> purchaseData) async {
-    // Get the original Purchase object
-    final Purchase purchase = purchaseData['original_purchase'];
-    final vat = purchase.amount * _vatRate;
-    final total = purchase.amount + vat;
-    
-    // Fetch detailed purchase info if needed
-    final purchasesProvider = Provider.of<PurchasesProvider>(context, listen: false);
-    Purchase? detailedPurchase = purchase;
-    
-    // If we need more detailed info than what's in the list
-    if (purchase.items == null || purchase.items!.isEmpty) {
-      final response = await purchasesProvider.getPurchaseDetails(purchase.id);
-      if (response != null) {
-        detailedPurchase = response;
-      }
-    }
-
-    if (!mounted) return;
-
+  // Show purchase details dialog
+  void _showPurchaseDetails(Purchase purchase) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Purchase Order: ${purchase.id}'),
+        title: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: Colors.green,
+              child: const Icon(Icons.shopping_bag, color: Colors.white, size: 16),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Purchase #${purchase.id}',
+                style: const TextStyle(fontSize: 18),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildDetailRow('Date', purchase.date),
               _buildDetailRow('Supplier', purchase.supplier),
+              _buildDetailRow('Date', _dateFormat.format(DateTime.parse(purchase.date))),
+              _buildDetailRow('Amount', _moneyFormat.format(purchase.amount)),
               _buildDetailRow('Status', purchase.status),
-              _buildDetailRow('Receipt Linked', purchaseData['receipt_scanned'] ? 'Yes' : 'No'),
-              
+
+              if (purchase.items != null && purchase.items!.isNotEmpty)
+                _buildDetailRow('Items', '${purchase.items!.length} items'),
+
               const SizedBox(height: 16),
-              const Text(
-                'Items',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
+              const Divider(),
               const SizedBox(height: 8),
-              
-              // Show items table if items are available
-              if (detailedPurchase?.items != null && detailedPurchase!.items!.isNotEmpty)
-                Table(
-                  border: TableBorder.all(color: Colors.grey.shade300),
-                  children: [
-                    const TableRow(
-                      decoration: BoxDecoration(color: Colors.green),
-                      children: [
-                        TableCell(
-                          child: Padding(
-                            padding: EdgeInsets.all(8.0),
-                            child: Text(
-                              'Item',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
+
+              // Items list
+              if (purchase.items != null && purchase.items!.isNotEmpty) ...[
+                const Text(
+                  'Items:',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 8),
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: purchase.items!.length,
+                  itemBuilder: (context, index) {
+                    final item = purchase.items![index];
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8.0),
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.description,
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('Qty: ${item.quantity}'),
+                                Text(_moneyFormat.format(item.price)),
+                              ],
+                            ),
+                            if (item.vatAmount != null)
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    'VAT: ${_moneyFormat.format(item.vatAmount)}',
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ],
                               ),
-                            ),
-                          ),
+                          ],
                         ),
-                        TableCell(
-                          child: Padding(
-                            padding: EdgeInsets.all(8.0),
-                            child: Text(
-                              'Qty',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                        TableCell(
-                          child: Padding(
-                            padding: EdgeInsets.all(8.0),
-                            child: Text(
-                              'Price',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                        TableCell(
-                          child: Padding(
-                            padding: EdgeInsets.all(8.0),
-                            child: Text(
-                              'Total',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    ...detailedPurchase!.items!.map<TableRow>((item) {
-                      final quantity = item.quantity;
-                      final price = item.price;
-                      final total = quantity * price;
-                      
-                      return TableRow(
-                        children: [
-                          TableCell(
-                            child: Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: Text(item.name),
-                            ),
-                          ),
-                          TableCell(
-                            child: Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: Text(quantity.toString()),
-                            ),
-                          ),
-                          TableCell(
-                            child: Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: Text(_moneyFormat.format(price)),
-                            ),
-                          ),
-                          TableCell(
-                            child: Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: Text(_moneyFormat.format(total)),
-                            ),
-                          ),
-                        ],
-                      );
-                    }).toList(),
-                  ],
+                      ),
+                    );
+                  },
                 )
-              else
-                const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text('No items available for this purchase.'),
-                ),
-              
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(8.0),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(8.0),
-                ),
-                child: Column(
-                  children: [
-                    _buildSummaryRow('Subtotal', _moneyFormat.format(purchase.amount)),
-                    _buildSummaryRow('VAT (18%)', _moneyFormat.format(vat)),
-                    const Divider(),
-                    _buildSummaryRow('Total', _moneyFormat.format(total), isBold: true),
-                  ],
-                ),
-              ),
+              ] else
+                const Text('No item details available'),
             ],
           ),
         ),
@@ -257,77 +170,16 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Close'),
           ),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.edit),
-            label: const Text('Edit'),
+          ElevatedButton(
             onPressed: () {
               Navigator.of(context).pop();
               _showEditPurchaseDialog(purchase);
             },
-          ),
-          if (!purchaseData['receipt_scanned'])
-            ElevatedButton.icon(
-              icon: const Icon(Icons.qr_code_scanner),
-              label: const Text('Link Receipt'),
-              onPressed: () {
-                Navigator.of(context).pop();
-                _showLinkReceiptDialog(purchase);
-              },
-            ),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.print),
-            label: const Text('Print'),
-            onPressed: () {
-              Navigator.of(context).pop();
-              // Implement print functionality
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Print functionality not implemented'),
-                ),
-              );
-            },
+            child: const Text('Edit'),
           ),
         ],
       ),
     );
-  }
-
-  void _showEditPurchaseDialog(Purchase purchase) {
-    // TODO: Implement edit purchase functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Edit purchase functionality not implemented yet'),
-      ),
-    );
-  }
-
-  void _showAddPurchaseDialog() {
-    // TODO: Implement add purchase functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Add new purchase functionality not implemented yet'),
-      ),
-    );
-  }
-
-  void _showLinkReceiptDialog(Purchase purchase) {
-    final receiptProvider = Provider.of<ReceiptProvider>(context, listen: false);
-
-    // Basic placeholder - in a real implementation, this would show a list of receipts to link or go to the scanner
-    if (receiptProvider.receipts.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No receipts available. Please scan a receipt first.'),
-        ),
-      );
-      Navigator.pushNamed(context, 'scan');
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Receipt linking functionality not fully implemented yet'),
-        ),
-      );
-    }
   }
 
   Widget _buildDetailRow(String label, String value) {
@@ -336,13 +188,10 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              '$label:',
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
+          Text(
+            '$label: ',
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
             ),
           ),
           Expanded(
@@ -353,122 +202,215 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
     );
   }
 
-  Widget _buildSummaryRow(String label, String value, {bool isBold = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
-            ),
-          ),
-          Text(
-            value,
-            style: TextStyle(
-              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
-            ),
-          ),
-        ],
+  // Add new purchase dialog
+  void _showAddPurchaseDialog() {
+    // Implementation will be added later
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Add purchase functionality coming soon'),
+      ),
+    );
+  }
+
+  // Edit purchase dialog
+  void _showEditPurchaseDialog(Purchase purchase) {
+    // Implementation will be added later
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Edit purchase functionality coming soon'),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final purchasesProvider = Provider.of<PurchasesProvider>(context);
-    final appStateProvider = Provider.of<AppStateProvider>(context);
-    
-    final bool isLoading = purchasesProvider.isLoading;
-    final bool isOffline = appStateProvider.isOffline;
-    
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          children: [
-            const Text('Purchases'),
-            if (isOffline)
-              Container(
-                margin: const EdgeInsets.only(left: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Icon(Icons.cloud_off, size: 14, color: Colors.orange),
-                    SizedBox(width: 4),
-                    Text(
-                      'Offline',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.orange,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
+        title: const Text('Purchases'),
         automaticallyImplyLeading: false,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadPurchasesData,
-            tooltip: 'Refresh',
+            icon: const Icon(Icons.filter_list),
+            onPressed: () {
+              setState(() {
+                _isFiltering = !_isFiltering;
+              });
+            },
           ),
           IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: _showAddPurchaseDialog,
-            tooltip: 'Add New Purchase',
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              final purchasesProvider = Provider.of<PurchasesProvider>(context, listen: false);
+              purchasesProvider.fetchPurchases();
+            },
+            tooltip: 'Refresh',
           ),
         ],
       ),
       body: Column(
         children: [
-          if (purchasesProvider.apiRequestStatus == APIRequestStatus.error)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(8),
-              color: Colors.red.shade100,
-              child: Row(
+          // Filter section
+          if (_isFiltering)
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
                 children: [
-                  const Icon(Icons.error_outline, color: Colors.red),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Error: ${purchasesProvider.lastError}',
-                      style: const TextStyle(color: Colors.red),
+                  TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      labelText: 'Search by supplier',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          _applyFilters();
+                        },
+                      ),
                     ),
+                    onSubmitted: (_) => _applyFilters(),
                   ),
-                  TextButton(
-                    onPressed: _loadPurchasesData,
-                    child: const Text('RETRY'),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.date_range),
+                          label: Text(_startDate != null && _endDate != null
+                              ? '${_dateFormat.format(_startDate!)} - ${_dateFormat.format(_endDate!)}'
+                              : 'Select Date Range'),
+                          onPressed: () => _selectDateRange(context),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.filter_list),
+                        onPressed: _applyFilters,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.clear_all),
+                        onPressed: () {
+                          setState(() {
+                            _startDate = null;
+                            _endDate = null;
+                            _searchController.clear();
+                          });
+                          _applyFilters();
+                        },
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-            
+
+          // Purchases List
           Expanded(
-            child: DataTableWidget(
-              data: _formattedPurchasesData,
-              columns: _columns,
-              columnNames: _columnNames,
-              isLoading: isLoading,
-              emptyMessage: isLoading 
-                  ? 'Loading purchases data...' 
-                  : (isOffline ? 'No purchases data available in offline mode' : 'No purchases data available'),
-              onRowTap: _showPurchaseDetails,
-              searchController: _searchController,
-              onSearch: _handleSearch,
-              startDate: _startDate,
-              endDate: _endDate,
-              onDateRangeChanged: _handleDateRangeChanged,
+            child: Consumer<PurchasesProvider>(
+              builder: (context, purchasesProvider, child) {
+                final isLoading = purchasesProvider.isLoading;
+
+                if (isLoading) {
+                  return const Center(child: CircularProgressIndicator());
+                } else if (purchasesProvider.apiRequestStatus == APIRequestStatus.error) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.error_outline, size: 60, color: Colors.red),
+                        const SizedBox(height: 16),
+                        Text('Error: ${purchasesProvider.lastError}'),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: () => purchasesProvider.fetchPurchases(),
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  );
+                } else if (purchasesProvider.purchases.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.shopping_bag, size: 60, color: Colors.grey[400]),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'No purchases recorded yet',
+                          style: TextStyle(fontSize: 18),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Add purchases manually',
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
+                        const SizedBox(height: 24),
+                        ElevatedButton.icon(
+                          onPressed: _showAddPurchaseDialog,
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add Purchase Manually'),
+                        ),
+                      ],
+                    ),
+                  );
+                } else {
+                  // Show purchases list
+                  return RefreshIndicator(
+                    onRefresh: () => purchasesProvider.fetchPurchases(),
+                    child: ListView.builder(
+                      itemCount: purchasesProvider.purchases.length,
+                      itemBuilder: (context, index) {
+                        final purchase = purchasesProvider.purchases[index];
+                        return Card(
+                          margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: Colors.green,
+                              child: const Icon(Icons.shopping_bag, color: Colors.white, size: 16),
+                            ),
+                            title: Text(
+                              purchase.supplier,
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: Text(
+                              'Date: ${_dateFormat.format(DateTime.parse(purchase.date))}',
+                            ),
+                            trailing: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  _moneyFormat.format(purchase.amount),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                Text(
+                                  purchase.status,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: purchase.status == 'Paid'
+                                        ? Colors.green
+                                        : Colors.orange,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            onTap: () => _showPurchaseDetails(purchase),
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                }
+              },
             ),
           ),
         ],
@@ -476,14 +418,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddPurchaseDialog,
         child: const Icon(Icons.add),
-        tooltip: 'Add New Purchase',
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
   }
 }

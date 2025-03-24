@@ -60,11 +60,13 @@ class PurchaseItem {
   final String name;
   final int quantity;
   final double price;
+  final double? vatAmount;
 
   PurchaseItem({
     required this.name,
     required this.quantity,
     required this.price,
+    this.vatAmount,
   });
 
   factory PurchaseItem.fromJson(Map<String, dynamic> json) {
@@ -72,14 +74,18 @@ class PurchaseItem {
       name: json['name'] ?? 'Unknown Item',
       quantity: json['quantity'] ?? 1,
       price: json['price'] is num ? json['price'].toDouble() : 0.0,
+      vatAmount: json['vat_amount'] is num ? json['vat_amount'].toDouble() : null,
     );
   }
+
+  String get description => '';
 
   Map<String, dynamic> toJson() {
     return {
       'name': name,
       'quantity': quantity,
       'price': price,
+      'vat_amount': vatAmount,
     };
   }
 }

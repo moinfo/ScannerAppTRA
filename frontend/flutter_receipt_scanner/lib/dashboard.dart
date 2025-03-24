@@ -3,6 +3,7 @@ import 'package:flutter_receipt_scanner/login_page.dart';
 import 'package:flutter_receipt_scanner/main.dart';
 import 'package:flutter_receipt_scanner/providers/app_state_provider.dart';
 import 'package:flutter_receipt_scanner/providers/vat_provider.dart';
+// import 'package:flutter_receipt_scanner/screens/auto_purchases_screen.dart';
 import 'package:flutter_receipt_scanner/screens/home_screen.dart';
 import 'package:flutter_receipt_scanner/screens/purchases_screen.dart';
 import 'package:flutter_receipt_scanner/screens/reports_screen.dart';
@@ -38,7 +39,7 @@ class _DashboardState extends State<Dashboard> {
   
   void _initializeScreens() {
     _screensCache = [
-      const HomeScreen(),
+      // const HomeScreen(),
       const SalesScreen(),
       const PurchasesScreen(),
       const VatPaymentScreen(),
@@ -282,6 +283,18 @@ class _DashboardState extends State<Dashboard> {
                 Navigator.pop(context);
               },
             ),
+            // ListTile(
+            //   leading: const Icon(Icons.receipt_long),
+            //   title: const Text('Auto Purchases'),
+            //   onTap: () {
+            //     Navigator.pop(context);
+            //     Navigator.of(context).push(
+            //       MaterialPageRoute(
+            //         builder: (context) => const AutoPurchasesScreen(),
+            //       ),
+            //     );
+            //   },
+            // ),
             ListTile(
               leading: const Icon(Icons.payments),
               title: const Text('VAT Payments'),
