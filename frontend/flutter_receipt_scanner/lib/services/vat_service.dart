@@ -204,7 +204,7 @@ class VatService {
 
       // Make API call with synchronous offlineFallback
       final response = await _apiService.get<Map<String, dynamic>>(
-        '${ApiConfig.baseUrl}/vat/payments',
+        '${ApiConfig.reportsUrl}/vat/payments',
         queryParams: queryParams,
         fromJson: (json) => json,
         offlineFallback: () => offlineDataMap,  // Now synchronous
@@ -244,7 +244,7 @@ class VatService {
 
       // Make API call with synchronous offlineFallback
       final response = await _apiService.get<Map<String, dynamic>>(
-        '${ApiConfig.baseUrl}/vat/payments/$paymentId',
+        '${ApiConfig.reportsUrl}/vat/payments/$paymentId',
         fromJson: (json) => json,
         offlineFallback: offlinePayment != null
             ? () => offlinePayment.toJson()  // Synchronous function
@@ -285,7 +285,7 @@ class VatService {
 
       // Make API call with synchronous offlineFallback
       final response = await _apiService.get<Map<String, dynamic>>(
-        '${ApiConfig.baseUrl}/vat/report',
+        ApiConfig.reportsUrl + '/vat',
         queryParams: {
           'start_date': startDateStr,
           'end_date': endDateStr,
@@ -324,7 +324,7 @@ class VatService {
       
       // Make API call to create payment
       final response = await _apiService.post<Map<String, dynamic>>(
-        '${ApiConfig.baseUrl}/vat/payments',
+        '${ApiConfig.reportsUrl}/vat/payments',
         body: payment.toJson(),
         fromJson: (json) => json,
       );
@@ -395,7 +395,7 @@ class VatService {
       if (notes != null) body['notes'] = notes;
       
       final response = await _apiService.put<Map<String, dynamic>>(
-        '${ApiConfig.baseUrl}/vat/payments/$paymentId/status',
+        '${ApiConfig.reportsUrl}/vat/payments/$paymentId/status',
         body: body,
         fromJson: (json) => json,
       );

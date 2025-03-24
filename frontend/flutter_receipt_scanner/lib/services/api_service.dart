@@ -98,7 +98,17 @@ class ApiService {
     bool requiresAuth = true,
     T Function()? offlineFallback,
   }) async {
-    // Check if in offline mode first
+    // Check if backend should be used
+    if (!ApiConfig.useRealBackend) {
+      if (offlineFallback != null) {
+        debugPrint('🔄 Using offline fallback because useRealBackend=false for GET $endpoint');
+        return ApiResponse.offline(offlineFallback());
+      } else {
+        return ApiResponse.error('No offline data available and useRealBackend=false');
+      }
+    }
+    
+    // Check if in offline mode 
     if (await isOfflineMode()) {
       if (offlineFallback != null) {
         debugPrint('🔄 Using offline fallback for GET $endpoint');
@@ -190,7 +200,18 @@ class ApiService {
     required Object body,
     required T Function(dynamic) fromJson,
     bool requiresAuth = true,
+    T Function()? offlineFallback,
   }) async {
+    // Check if backend should be used
+    if (!ApiConfig.useRealBackend) {
+      if (offlineFallback != null) {
+        debugPrint('🔄 Using offline fallback because useRealBackend=false for POST $endpoint');
+        return ApiResponse.offline(offlineFallback());
+      } else {
+        return ApiResponse.error('No offline data available and useRealBackend=false');
+      }
+    }
+    
     // Check if in offline mode
     if (await isOfflineMode()) {
       return ApiResponse.error('Cannot perform POST request in offline mode');
@@ -276,7 +297,18 @@ class ApiService {
     required Object body,
     required T Function(dynamic) fromJson,
     bool requiresAuth = true,
+    T Function()? offlineFallback,
   }) async {
+    // Check if backend should be used
+    if (!ApiConfig.useRealBackend) {
+      if (offlineFallback != null) {
+        debugPrint('🔄 Using offline fallback because useRealBackend=false for PUT $endpoint');
+        return ApiResponse.offline(offlineFallback());
+      } else {
+        return ApiResponse.error('No offline data available and useRealBackend=false');
+      }
+    }
+    
     // Check if in offline mode
     if (await isOfflineMode()) {
       return ApiResponse.error('Cannot perform PUT request in offline mode');
@@ -360,7 +392,18 @@ class ApiService {
   Future<ApiResponse<bool>> delete(
     String endpoint, {
     bool requiresAuth = true,
+    bool Function()? offlineFallback,
   }) async {
+    // Check if backend should be used
+    if (!ApiConfig.useRealBackend) {
+      if (offlineFallback != null) {
+        debugPrint('🔄 Using offline fallback because useRealBackend=false for DELETE $endpoint');
+        return ApiResponse.offline(offlineFallback());
+      } else {
+        return ApiResponse.error('No offline data available and useRealBackend=false');
+      }
+    }
+    
     // Check if in offline mode
     if (await isOfflineMode()) {
       return ApiResponse.error('Cannot perform DELETE request in offline mode');

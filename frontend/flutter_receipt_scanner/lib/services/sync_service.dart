@@ -167,25 +167,25 @@ class SyncService {
       // Sync each type of entity
       final receiptResults = await _syncEntities(
         unsyncedReceipts,
-        '${ApiConfig.baseUrl}/receipts/sync',
+        '${ApiConfig.receiptsUrl}/sync',
         'receipt',
       );
       
       final salesResults = await _syncEntities(
         unsyncedSales,
-        '${ApiConfig.baseUrl}/sales/sync',
+        '${ApiConfig.salesUrl}/sync',
         'sale',
       );
       
       final purchasesResults = await _syncEntities(
         unsyncedPurchases,
-        '${ApiConfig.baseUrl}/purchases/sync',
+        '${ApiConfig.purchasesUrl}/sync',
         'purchase',
       );
       
       final vatPaymentsResults = await _syncEntities(
         unsyncedVatPayments,
-        '${ApiConfig.baseUrl}/vat/payments/sync',
+        '${ApiConfig.reportsUrl}/vat/payments/sync',
         'vat_payment',
       );
       

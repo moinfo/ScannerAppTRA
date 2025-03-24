@@ -15,6 +15,12 @@ class AuthService {
   // Login method that uses the API service
   Future<ApiResponse<Map<String, dynamic>>> login(String email, String password) async {
     try {
+      // If backend is disabled, use offline login for any credentials
+      if (!ApiConfig.useRealBackend) {
+        debugPrint('🔑 Using offline login because useRealBackend=false');
+        return await loginOffline(email);
+      }
+      
       final response = await _apiService.post<Map<String, dynamic>>(
         ApiConfig.loginUrl,
         body: {

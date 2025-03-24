@@ -155,14 +155,23 @@ class PurchaseService {
 
       // Make API call
       final response = await _apiService.get<Map<String, dynamic>>(
-        '${ApiConfig.baseUrl}/purchases',
+        ApiConfig.purchasesUrl,
         queryParams: queryParams,
         fromJson: (json) => json,
         offlineFallback: () => {'data': offlinePurchasesJson},
       );
 
       if (response.success) {
-        final List<dynamic> purchasesData = response.data!['data'] as List;
+        // Check if the data is under 'data' or 'receipts' key (API might return either)
+        final List<dynamic> purchasesData;
+        if (response.data!.containsKey('data')) {
+          purchasesData = response.data!['data'] as List;
+        } else if (response.data!.containsKey('receipts')) {
+          purchasesData = response.data!['receipts']['data'] as List;
+        } else {
+          return ApiResponse.error('Unexpected API response format');
+        }
+        
         final purchases = purchasesData.map((json) => Purchase.fromJson(json)).toList();
         return ApiResponse.success(purchases);
       } else {
@@ -196,7 +205,7 @@ class PurchaseService {
 
       // Make API call to get purchase details
       final response = await _apiService.get<Map<String, dynamic>>(
-        '${ApiConfig.baseUrl}/purchases/$purchaseId',
+        '${ApiConfig.purchasesUrl}/$purchaseId',
         fromJson: (json) => json,
         offlineFallback: purchaseJson != null
             ? () => purchaseJson
@@ -235,7 +244,7 @@ class PurchaseService {
       
       // Make API call to create purchase
       final response = await _apiService.post<Map<String, dynamic>>(
-        '${ApiConfig.baseUrl}/purchases',
+        ApiConfig.purchasesUrl,
         body: purchase.toJson(),
         fromJson: (json) => json,
       );
@@ -270,7 +279,7 @@ class PurchaseService {
       
       // Make API call to update purchase
       final response = await _apiService.put<Map<String, dynamic>>(
-        '${ApiConfig.baseUrl}/purchases/${purchase.id}',
+        '${ApiConfig.purchasesUrl}/${purchase.id}',
         body: purchase.toJson(),
         fromJson: (json) => json,
       );
@@ -305,7 +314,7 @@ class PurchaseService {
       
       // Make API call to delete purchase
       return await _apiService.delete(
-        '${ApiConfig.baseUrl}/purchases/$purchaseId',
+        '${ApiConfig.purchasesUrl}/$purchaseId',
       );
     } catch (e) {
       debugPrint('Error in deletePurchase: $e');
@@ -346,7 +355,7 @@ class PurchaseService {
       
       // Make API call to link
       final response = await _apiService.put<Map<String, dynamic>>(
-        '${ApiConfig.baseUrl}/purchases/$purchaseId/link/$receiptId',
+        '${ApiConfig.purchasesUrl}/$purchaseId/link/$receiptId',
         body: {},
         fromJson: (json) => json,
       );

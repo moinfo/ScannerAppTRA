@@ -11,6 +11,7 @@ import 'package:flutter_receipt_scanner/providers/purchases_provider.dart';
 import 'package:flutter_receipt_scanner/providers/receipt_provider.dart';
 import 'package:flutter_receipt_scanner/providers/sales_provider.dart';
 import 'package:flutter_receipt_scanner/providers/vat_provider.dart';
+import 'package:flutter_receipt_scanner/services/receipt_to_sale_service.dart';
 import 'package:flutter_receipt_scanner/utils/api_request_status.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -22,6 +23,9 @@ import 'dart:math' show min;
 
 // API URLs - Change these based on your environment
 class ApiConfig {
+  // Set to false for testing without a running backend server
+  static const bool useRealBackend = true;
+  
   // Set to true for local development, false for production
   static const bool useLocalServer = true;
   
@@ -39,6 +43,11 @@ class ApiConfig {
   static String get receiptsUrl => '$baseUrl/receipts';
   static String get addReceiptUrl => '$baseUrl/add_receipt';
   static String get loginUrl => '$baseUrl/login';
+  
+  // New API endpoints
+  static String get salesUrl => '$baseUrl/sales';
+  static String get purchasesUrl => '$baseUrl/purchases';
+  static String get reportsUrl => '$baseUrl/reports';
 }
 
 void main() async {
@@ -607,6 +616,96 @@ class ReceiptDetailPage extends StatelessWidget {
       launchUrl(Uri.parse('https://verify.tra.go.tz/$path'));
     }
   }
+  
+  Future<void> _convertToSale(BuildContext context, Receipt receipt) async {
+    // Show confirmation dialog
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Convert to Sale'),
+        content: Text('Do you want to convert this receipt from ${receipt.companyName} to a sale record?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('CANCEL'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('CONVERT'),
+          ),
+        ],
+      ),
+    ) ?? false;
+    
+    if (!confirm || !context.mounted) return;
+    
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Text('Converting receipt to sale...'),
+          ],
+        ),
+      ),
+    );
+    
+    try {
+      // Get the SalesProvider
+      final salesProvider = Provider.of<SalesProvider>(context, listen: false);
+      
+      // Use the ReceiptToSaleService to convert the receipt
+      final receiptToSaleService = ReceiptToSaleService();
+      final response = await receiptToSaleService.convertReceiptToSale(receipt);
+      
+      // Close loading dialog
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
+      
+      if (response.success) {
+        // Refresh the sales list
+        salesProvider.fetchSales();
+        
+        // Show success message
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Receipt successfully converted to sale'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        // Show error message
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to convert receipt: ${response.errorMessage}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Close loading dialog
+      if (context.mounted) {
+        Navigator.of(context).pop();
+        
+        // Show error message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error converting receipt: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -626,7 +725,13 @@ class ReceiptDetailPage extends StatelessWidget {
                 "${receipt.verificationCode}_${receipt.time?.replaceAll(':', '')}",
               ),
               icon: const Icon(Icons.language),
+              tooltip: 'Verify on TRA website',
             ),
+          IconButton(
+            onPressed: () => _convertToSale(context, receipt),
+            icon: const Icon(Icons.shopping_cart),
+            tooltip: 'Convert to sale',
+          ),
         ],
       ),
       body: SingleChildScrollView(

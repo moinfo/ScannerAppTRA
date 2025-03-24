@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_receipt_scanner/services/report_service.dart';
 import 'package:intl/intl.dart';
 import 'dart:math' as math;
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({Key? key}) : super(key: key);
@@ -11,11 +15,13 @@ class ReportsScreen extends StatefulWidget {
 
 class _ReportsScreenState extends State<ReportsScreen> {
   bool _isLoading = false;
+  bool _isExporting = false;
   final _moneyFormat = NumberFormat.currency(symbol: 'TZS ', decimalDigits: 2);
   DateTime? _startDate;
   DateTime? _endDate;
   String _selectedReportType = 'sales';
   String _selectedPeriod = 'monthly';
+  final ReportService _reportService = ReportService();
   
   // Sample data for reports
   final Map<String, List<Map<String, dynamic>>> _reportData = {
@@ -148,12 +154,166 @@ class _ReportsScreenState extends State<ReportsScreen> {
     });
   }
 
-  void _exportReport() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Export functionality not implemented'),
+  Future<void> _exportReport() async {
+    // Show export options dialog
+    final format = await _showExportOptionsDialog();
+    if (format == null) return;
+    
+    try {
+      setState(() {
+        _isExporting = true;
+      });
+      
+      // Get the report type
+      ReportType reportType;
+      switch (_selectedReportType) {
+        case 'sales':
+          reportType = ReportType.sales;
+          break;
+        case 'purchases':
+          reportType = ReportType.purchases;
+          break;
+        case 'vat':
+          reportType = ReportType.vat;
+          break;
+        default:
+          reportType = ReportType.sales;
+      }
+      
+      // Get the report period
+      ReportPeriod reportPeriod;
+      switch (_selectedPeriod) {
+        case 'daily':
+          reportPeriod = ReportPeriod.daily;
+          break;
+        case 'weekly':
+          reportPeriod = ReportPeriod.weekly;
+          break;
+        case 'monthly':
+          reportPeriod = ReportPeriod.monthly;
+          break;
+        case 'quarterly':
+          reportPeriod = ReportPeriod.quarterly;
+          break;
+        case 'yearly':
+          reportPeriod = ReportPeriod.yearly;
+          break;
+        default:
+          reportPeriod = ReportPeriod.monthly;
+      }
+      
+      // Generate the report
+      final filePath = await _reportService.generateReport(
+        data: _reportData[_selectedReportType] ?? [],
+        reportType: reportType,
+        reportPeriod: reportPeriod,
+        format: format,
+        startDate: _startDate,
+        endDate: _endDate,
+      );
+      
+      // Show success message with option to view the file
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Report exported to: $filePath'),
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'VIEW',
+              onPressed: () => _openFile(filePath),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to export report: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isExporting = false;
+        });
+      }
+    }
+  }
+  
+  Future<ReportFormat?> _showExportOptionsDialog() async {
+    return showDialog<ReportFormat>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Export Report'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Choose export format:'),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.picture_as_pdf),
+                  label: const Text('PDF'),
+                  onPressed: () => Navigator.of(context).pop(ReportFormat.pdf),
+                ),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.table_chart),
+                  label: const Text('CSV'),
+                  onPressed: () => Navigator.of(context).pop(ReportFormat.csv),
+                ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('CANCEL'),
+          ),
+        ],
       ),
     );
+  }
+  
+  Future<void> _openFile(String filePath) async {
+    try {
+      final file = File(filePath);
+      if (await file.exists()) {
+        final uri = Uri.file(filePath);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri);
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Could not open file. No app available to handle this file type.'),
+              ),
+            );
+          }
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('File does not exist'),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening file: $e'),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -220,9 +380,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
             const SizedBox(width: 8),
             OutlinedButton.icon(
-              icon: const Icon(Icons.file_download),
-              label: const Text('Export'),
-              onPressed: _exportReport,
+              icon: _isExporting 
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.file_download),
+              label: Text(_isExporting ? 'Exporting...' : 'Export'),
+              onPressed: _isExporting ? null : _exportReport,
             ),
           ],
         ),

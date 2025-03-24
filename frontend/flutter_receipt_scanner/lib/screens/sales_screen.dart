@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_receipt_scanner/providers/app_state_provider.dart';
 import 'package:flutter_receipt_scanner/providers/sales_provider.dart';
+import 'package:flutter_receipt_scanner/screens/add_edit_sale_screen.dart';
 import 'package:flutter_receipt_scanner/services/sales_service.dart';
 import 'package:flutter_receipt_scanner/utils/api_request_status.dart';
 import 'package:flutter_receipt_scanner/widgets/data_table_widget.dart';
@@ -274,21 +275,31 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 
   void _showEditSaleDialog(Sale sale) {
-    // TODO: Implement edit sale functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Edit sale functionality not implemented yet'),
+    // Navigate to the AddEditSaleScreen to edit the sale
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => AddEditSaleScreen(sale: sale),
       ),
-    );
+    ).then((result) {
+      if (result == true) {
+        // If sale was updated, refresh the list
+        _loadSalesData();
+      }
+    });
   }
 
   void _showAddSaleDialog() {
-    // TODO: Implement add sale functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Add new sale functionality not implemented yet'),
+    // Navigate to the AddEditSaleScreen to create a new sale
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const AddEditSaleScreen(),
       ),
-    );
+    ).then((result) {
+      if (result == true) {
+        // If sale was created, refresh the list
+        _loadSalesData();
+      }
+    });
   }
 
   Widget _buildDetailRow(String label, String value) {

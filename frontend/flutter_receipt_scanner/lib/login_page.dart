@@ -23,7 +23,7 @@ class _LoginPageState extends State<LoginPage> {
   bool _shouldBypassLogin = false;
 
   // Use ApiConfig for URL management
-  final String loginUrl = '${ApiConfig.baseUrl}/login';
+  final String loginUrl = ApiConfig.loginUrl;
 
   @override
   void dispose() {
@@ -185,18 +185,19 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                     
-                    // Server status message
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.orange.shade200),
-                      ),
-                      child: const Text(
-                        'Backend server is currently unavailable. Please use the "Enter App" button below to access the app in offline mode.',
-                        textAlign: TextAlign.center,
+                    // Server status message - only show when useRealBackend is false
+                    if (!ApiConfig.useRealBackend)
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.orange.shade200),
+                        ),
+                        child: const Text(
+                          'API Backend is disabled. Any login credentials will work in this demo mode.',
+                          textAlign: TextAlign.center,
                         style: TextStyle(color: Colors.deepOrange),
                       ),
                     ),

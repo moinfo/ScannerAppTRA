@@ -147,14 +147,23 @@ class SalesService {
 
       // Make API call with synchronous offlineFallback
       final response = await _apiService.get<Map<String, dynamic>>(
-        '${ApiConfig.baseUrl}/sales',
+        ApiConfig.salesUrl,
         queryParams: queryParams,
         fromJson: (json) => json,
         offlineFallback: () => offlineDataMap,  // Now synchronous
       );
 
       if (response.success) {
-        final List<dynamic> salesData = response.data!['data'] as List;
+        // Check if the data is under 'data' or 'receipts' key (API might return either)
+        final List<dynamic> salesData;
+        if (response.data!.containsKey('data')) {
+          salesData = response.data!['data'] as List;
+        } else if (response.data!.containsKey('receipts')) {
+          salesData = response.data!['receipts']['data'] as List;
+        } else {
+          return ApiResponse.error('Unexpected API response format');
+        }
+        
         final sales = salesData.map((json) => Sale.fromJson(json)).toList();
         return ApiResponse.success(sales);
       } else {
@@ -187,7 +196,7 @@ class SalesService {
 
       // Make API call with synchronous offlineFallback
       final response = await _apiService.get<Map<String, dynamic>>(
-        '${ApiConfig.baseUrl}/sales/$saleId',
+        '${ApiConfig.salesUrl}/$saleId',
         fromJson: (json) => json,
         offlineFallback: offlineSale != null
             ? () => offlineSale.toJson()  // Synchronous function
@@ -224,7 +233,7 @@ class SalesService {
       
       // Make API call to create sale
       final response = await _apiService.post<Map<String, dynamic>>(
-        '${ApiConfig.baseUrl}/sales',
+        ApiConfig.salesUrl,
         body: sale.toJson(),
         fromJson: (json) => json,
       );
@@ -259,7 +268,7 @@ class SalesService {
       
       // Make API call to update sale
       final response = await _apiService.put<Map<String, dynamic>>(
-        '${ApiConfig.baseUrl}/sales/${sale.id}',
+        '${ApiConfig.salesUrl}/${sale.id}',
         body: sale.toJson(),
         fromJson: (json) => json,
       );
@@ -294,7 +303,7 @@ class SalesService {
       
       // Make API call to delete sale
       return await _apiService.delete(
-        '${ApiConfig.baseUrl}/sales/$saleId',
+        '${ApiConfig.salesUrl}/$saleId',
       );
     } catch (e) {
       debugPrint('Error in deleteSale: $e');
