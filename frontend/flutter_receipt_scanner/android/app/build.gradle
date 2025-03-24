@@ -1,11 +1,9 @@
-// The plugins block must come before any other statements
 plugins {
     id "com.android.application"
     id "kotlin-android"
     id "dev.flutter.flutter-gradle-plugin"
 }
 
-// Then the rest of your code
 def localProperties = new Properties()
 def localPropertiesFile = rootProject.file('local.properties')
 if (localPropertiesFile.exists()) {
@@ -25,17 +23,17 @@ if (flutterVersionName == null) {
 }
 
 android {
-    namespace "dev.steenbakker.mobile_scanner"
-    compileSdkVersion 34
+    namespace "com.example.flutter_receipt_scanner"
+    compileSdkVersion 35  // Update from 33 to 34
     ndkVersion flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = '17'
     }
 
     sourceSets {
@@ -59,4 +57,8 @@ android {
 
 flutter {
     source '../..'
+}
+
+dependencies {
+    // You can leave this empty if you don't need additional dependencies
 }

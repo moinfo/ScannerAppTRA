@@ -751,10 +751,10 @@ class _ScanPageState extends State<ScanPage> {
     return MobileScanner(
       key: qrKey,
       controller: controller,
-      onDetect: (barcode, args) async {
-        if (barcode.rawValue != null) {
+      onDetect: (capture) async {
+        if (capture.barcodes.isNotEmpty && capture.barcodes.first.rawValue != null) {
           try {
-            var url = barcode.rawValue!;
+            var url = capture.barcodes.first.rawValue!;
 
             final splittted = url.split('/');
             final last = splittted.last;

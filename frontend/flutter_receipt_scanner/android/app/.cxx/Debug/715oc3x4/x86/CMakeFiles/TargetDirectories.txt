@@ -1,0 +1,2 @@
+/Volumes/DopestGeek Recovery/uchafu/tra_scanner_app/frontend/flutter_receipt_scanner/android/app/.cxx/Debug/715oc3x4/x86/CMakeFiles/edit_cache.dir
+/Volumes/DopestGeek Recovery/uchafu/tra_scanner_app/frontend/flutter_receipt_scanner/android/app/.cxx/Debug/715oc3x4/x86/CMakeFiles/rebuild_cache.dir

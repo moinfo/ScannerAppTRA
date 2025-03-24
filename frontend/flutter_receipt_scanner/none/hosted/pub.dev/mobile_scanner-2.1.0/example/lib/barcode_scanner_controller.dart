@@ -41,7 +41,7 @@ class _BarcodeScannerWithControllerState
                 // ),
                 onDetect: (barcode, args) {
                   setState(() {
-                    this.barcode = barcode.rawValue;
+                    this.barcode = barcode.barcodes.first.rawValue;
                   });
                 },
               ),
