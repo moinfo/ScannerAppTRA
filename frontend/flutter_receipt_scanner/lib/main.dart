@@ -27,7 +27,7 @@ class ApiConfig {
   static const bool useRealBackend = true;
   
   // Set to true for local development, false for production
-  static const bool useLocalServer = true;
+  static const bool useLocalServer = false;
   
   // Base URLs
   static const String productionBaseUrl = 'https://lemuru.co.tz/api';
