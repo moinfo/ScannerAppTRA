@@ -4,20 +4,52 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter_receipt_scanner/login_page.dart';
 import 'package:flutter_receipt_scanner/utils/api_request_status.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:math' show min;
 
-void main() {
-  runApp(const MyApp());
+// API URLs - Change these based on your environment
+class ApiConfig {
+  // Set to true for local development, false for production
+  static const bool useLocalServer = true;
+  
+  // Base URLs
+  static const String productionBaseUrl = 'https://lemuru.co.tz/api';
+  static const String localBaseUrl = 'http://10.0.2.2:8000/api'; // Use your IP or 10.0.2.2 for Android emulator
+  
+  // Receipt scraper URL
+  static const String scraperUrl = 'http://50.116.44.162:4000';
+  
+  // Get the appropriate base URL
+  static String get baseUrl => useLocalServer ? localBaseUrl : productionBaseUrl;
+  
+  // API endpoints
+  static String get receiptsUrl => '$baseUrl/receipts';
+  static String get addReceiptUrl => '$baseUrl/add_receipt';
+  static String get loginUrl => '$baseUrl/login';
+}
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Check if user is logged in
+  final prefs = await SharedPreferences.getInstance();
+  final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+  
+  runApp(MyApp(isLoggedIn: isLoggedIn));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final bool isLoggedIn;
+  
+  const MyApp({super.key, this.isLoggedIn = false});
+  
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
@@ -27,9 +59,14 @@ class MyApp extends StatelessWidget {
         title: 'Flutter Receipt Scanner',
         theme: ThemeData(
           primarySwatch: Colors.blue,
+          useMaterial3: true,
         ),
-        home: const MyHomePage(),
-        routes: {'scan': (context) => const ScanPage()},
+        home: isLoggedIn ? const MyHomePage() : const LoginPage(),
+        routes: {
+          'scan': (context) => const ScanPage(),
+          'login': (context) => const LoginPage(),
+          'home': (context) => const MyHomePage(),
+        },
       ),
     );
   }
@@ -95,35 +132,303 @@ class MyHomePage extends StatefulWidget {
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
+// This will help us check the login state more easily
+class LoginState {
+  static Future<Map<String, dynamic>> getUserInfo() async {
+    final prefs = await SharedPreferences.getInstance();
+    final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+    final String? token = prefs.getString('token');
+    final String? userJson = prefs.getString('user');
+    Map<String, dynamic> user = {};
+    
+    if (userJson != null) {
+      try {
+        user = jsonDecode(userJson);
+      } catch (e) {
+        debugPrint('Error decoding user JSON: $e');
+      }
+    }
+    
+    final String? email = user['email'];
+    final String? name = user['name'];
+    final bool isOfflineMode = token != null && token.startsWith('offline_');
+    
+    return {
+      'isLoggedIn': isLoggedIn,
+      'token': token,
+      'email': email,
+      'name': name,
+      'isOfflineMode': isOfflineMode,
+    };
+  }
+}
+
 class _MyHomePageState extends State<MyHomePage> {
+  final ScrollController _scrollController = ScrollController();
+  DateTime? _startDate;
+  DateTime? _endDate;
+  final TextEditingController _searchController = TextEditingController();
+  
+  // User info
+  String _userName = "";
+  String _userEmail = "";
+  bool _isOfflineMode = false;
+  
   @override
-  initState() {
+  void initState() {
     super.initState();
     debugPrint('initState called');
-    SchedulerBinding.instance.addPostFrameCallback((_) {
+    
+    // Load user info and initial data
+    SchedulerBinding.instance.addPostFrameCallback((_) async {
       debugPrint('Post frame callback triggered');
+      
+      // Get user info
+      final userInfo = await LoginState.getUserInfo();
+      setState(() {
+        _userName = userInfo['name'] ?? 'Guest User';
+        _userEmail = userInfo['email'] ?? 'No email';
+        _isOfflineMode = userInfo['isOfflineMode'] ?? false;
+      });
+      
+      // Show login status toast message
+      _showLoginStatusToast();
+      
+      // Load receipts
       Provider.of<ReceiptProvider>(context, listen: false).fetchReceipts();
     });
+    
+    // Add scroll listener for pagination
+    _scrollController.addListener(_scrollListener);
+  }
+  
+  void _showLoginStatusToast() {
+    // Show a toast message with login status
+    final scaffold = ScaffoldMessenger.of(context);
+    scaffold.showSnackBar(
+      SnackBar(
+        content: _isOfflineMode
+            ? Text('Logged in as $_userName (Offline Mode)')
+            : Text('Logged in as $_userName ($_userEmail)'),
+        backgroundColor: _isOfflineMode ? Colors.orange : Colors.green,
+        duration: const Duration(seconds: 3),
+        action: SnackBarAction(
+          label: 'OK',
+          onPressed: scaffold.hideCurrentSnackBar,
+          textColor: Colors.white,
+        ),
+      ),
+    );
+  }
+  
+  void _scrollListener() {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+      // We're approaching the end of the list, load more data
+      final provider = Provider.of<ReceiptProvider>(context, listen: false);
+      if (!provider.isLoading && provider.hasMoreData) {
+        provider.loadMoreReceipts();
+      }
+    }
+  }
+
+  void _applyDateFilter() async {
+    final provider = Provider.of<ReceiptProvider>(context, listen: false);
+    await provider.fetchReceipts(
+      startDate: _startDate,
+      endDate: _endDate,
+      searchTerm: _searchController.text.trim(),
+    );
+  }
+
+  Future<void> _selectDateRange(BuildContext context) async {
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      initialDateRange: _startDate != null && _endDate != null
+          ? DateTimeRange(start: _startDate!, end: _endDate!)
+          : null,
+    );
+    
+    if (picked != null) {
+      setState(() {
+        _startDate = picked.start;
+        _endDate = picked.end;
+      });
+      _applyDateFilter();
+    }
+  }
+
+  void _clearFilters() {
+    setState(() {
+      _startDate = null;
+      _endDate = null;
+      _searchController.clear();
+    });
+    Provider.of<ReceiptProvider>(context, listen: false).fetchReceipts();
+  }
+
+  void _logout() async {
+    // Show confirmation dialog
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirm Logout'),
+        content: Text(_isOfflineMode 
+          ? 'Are you sure you want to exit offline mode? You will need to login again.'
+          : 'Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    ) ?? false;
+    
+    if (!shouldLogout || !mounted) return;
+    
+    // Perform logout
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+    
+    if (!mounted) return;
+    
+    // Show logout message
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Logged out successfully'),
+        backgroundColor: Colors.blue,
+        duration: Duration(seconds: 2),
+      ),
+    );
+    
+    // Navigate back to login page
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (context) => const LoginPage(),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Lemuru Scanner App'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Lemuru Scanner App'),
+            if (_userEmail.isNotEmpty) 
+              Text(
+                _isOfflineMode 
+                    ? 'Offline Mode - $_userName' 
+                    : '$_userName ($_userEmail)',
+                style: const TextStyle(fontSize: 12),
+              ),
+          ],
+        ),
+        actions: [
+          if (_isOfflineMode)
+            Container(
+              padding: const EdgeInsets.all(8.0),
+              child: const Icon(Icons.cloud_off, color: Colors.orange),
+            ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: _logout,
+            tooltip: 'Logout',
+          ),
+        ],
       ),
-      body: Consumer<ReceiptProvider>(
-        builder: (context, receipt, _) => buildBody(receipt),
+      body: Column(
+        children: [
+          // Search and filter section
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Column(
+              children: [
+                // Search bar
+                TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Search by company name',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        _searchController.clear();
+                        _applyDateFilter();
+                      },
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8.0),
+                    ),
+                  ),
+                  onSubmitted: (_) => _applyDateFilter(),
+                ),
+                const SizedBox(height: 8),
+                
+                // Date filter row
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.date_range),
+                        label: Text(_startDate != null && _endDate != null 
+                            ? '${DateFormat('dd/MM/yy').format(_startDate!)} - ${DateFormat('dd/MM/yy').format(_endDate!)}'
+                            : 'Select Date Range'),
+                        onPressed: () => _selectDateRange(context),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.filter_list),
+                      onPressed: _applyDateFilter,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.clear_all),
+                      onPressed: _clearFilters,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          
+          // Receipts list
+          Expanded(
+            child: Consumer<ReceiptProvider>(
+              builder: (context, receipt, _) => buildBody(receipt),
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () =>
             Navigator.pushNamed(context, ScanPage.route).then((value) async {
               await Provider.of<ReceiptProvider>(context, listen: false)
-                  .fetchReceipts();
+                  .fetchReceipts(
+                    startDate: _startDate,
+                    endDate: _endDate,
+                    searchTerm: _searchController.text.trim(),
+                  );
             }),
         child: const Icon(Icons.qr_code_scanner_rounded),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_scrollListener);
+    _scrollController.dispose();
+    _searchController.dispose();
+    super.dispose();
   }
 
   Widget buildBody(ReceiptProvider receiptProvider) {
@@ -137,7 +442,11 @@ class _MyHomePageState extends State<MyHomePage> {
           children: [
             Text('Error: ${receiptProvider.lastError}'),
             ElevatedButton(
-              onPressed: () => receiptProvider.fetchReceipts(),
+              onPressed: () => receiptProvider.fetchReceipts(
+                startDate: _startDate,
+                endDate: _endDate,
+                searchTerm: _searchController.text.trim(),
+              ),
               child: const Text('Retry'),
             ),
           ],
@@ -149,7 +458,11 @@ class _MyHomePageState extends State<MyHomePage> {
       body: buildBodyList(receiptProvider),
       onRefresh: () async {
         debugPrint('Refresh triggered');
-        await receiptProvider.fetchReceipts();
+        await receiptProvider.fetchReceipts(
+          startDate: _startDate,
+          endDate: _endDate,
+          searchTerm: _searchController.text.trim(),
+        );
       },
     );
   }
@@ -157,15 +470,37 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget buildBodyList(ReceiptProvider receiptProvider) {
     debugPrint('Receipts length: ${receiptProvider.receipts.length}');
     if (receiptProvider.receipts.isNotEmpty) {
-      return ListView.builder(
-        itemCount: receiptProvider.receipts.length,
-        itemBuilder: (context, int index) {
-          debugPrint('Building item at index: $index');
-          return ReceiptCard(
-            receipt: receiptProvider.receipts[index],
-            index: index,
-          );
-        },
+      return Stack(
+        children: [
+          ListView.builder(
+            controller: _scrollController,
+            itemCount: receiptProvider.receipts.length + (receiptProvider.hasMoreData ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (index < receiptProvider.receipts.length) {
+                debugPrint('Building item at index: $index');
+                return ReceiptCard(
+                  receipt: receiptProvider.receipts[index],
+                  index: index,
+                );
+              } else {
+                // Show a loading indicator at the bottom while loading more data
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16.0),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+            },
+          ),
+          
+          // Indicator when loading more data
+          if (receiptProvider.isLoadingMore)
+            const Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: LinearProgressIndicator(),
+            ),
+        ],
       );
     }
 
@@ -809,7 +1144,7 @@ class _ScanPageState extends State<ScanPage> {
 
         // First request to scraping server
         http.Response response = await http.get(
-          Uri.parse('http://50.116.44.162:4000/receipt/$code/$time'),
+          Uri.parse('${ApiConfig.scraperUrl}/receipt/$code/$time'),
           headers: {
             'Accept': 'application/json',
           },
@@ -838,7 +1173,7 @@ class _ScanPageState extends State<ScanPage> {
 
           // Second request to Lemuru server
           http.Response serverResponse = await http.post(
-            Uri.parse('https://lemuru.co.tz/api/add_receipt'),
+            Uri.parse(ApiConfig.addReceiptUrl),
             body: jsonEncode(responseBody),
             headers: {
               'Accept': 'application/json',
@@ -1006,6 +1341,40 @@ class Receipt {
   });
 
   factory Receipt.fromJson(Map<String, dynamic> json) {
+    // Check if we're dealing with a simplified offline format
+    if (json.containsKey('companyName') && !json.containsKey('receipt')) {
+      // Using the simplified format we created for offline mode
+      return Receipt(
+        id: json['id'] ?? 0,
+        companyName: json['companyName'] ?? 'Unknown Company',
+        poBox: null,
+        mobile: null,
+        tin: null,
+        vrn: null,
+        serialNumber: null,
+        uin: null,
+        taxOffice: null,
+        date: json['date'],
+        time: json['time'],
+        number: null,
+        zNumber: null,
+        verificationCode: json['id']?.toString(),
+        totalExlcOfTax: double.tryParse(json['amount']?.toString() ?? '0') ?? 0,
+        totalDiscount: 0,
+        totalTax: 0,
+        totalInclOfTax: double.tryParse(json['amount']?.toString() ?? '0') ?? 0,
+        customer: Customer(
+          name: '', 
+          idType: '', 
+          id: '', 
+          mobile: ''
+        ),
+        items: [],
+        adjustments: [],
+        payments: [],
+      );
+    }
+    
     // Helper function to safely parse double values
     double? parseDouble(dynamic value) {
       if (value == null) return null;
@@ -1189,27 +1558,96 @@ class ReceiptProvider extends ChangeNotifier {
   List<Receipt> _receipts = [];
   APIRequestStatus _apiRequestStatus = APIRequestStatus.loading;
   String _lastError = '';
-
+  bool _isLoading = false;
+  bool _isLoadingMore = false;
+  bool _hasMoreData = true;
+  int _currentPage = 1;
+  
   List<Receipt> get receipts => _receipts;
   APIRequestStatus get apiRequestStatus => _apiRequestStatus;
   String get lastError => _lastError;
+  bool get isLoading => _isLoading;
+  bool get isLoadingMore => _isLoadingMore; 
+  bool get hasMoreData => _hasMoreData;
 
   ReceiptProvider() {
     debugPrint('ReceiptProvider initialized');
-    fetchReceipts();
+    // We'll fetch receipts from the MyHomePage instead to avoid duplicate calls
   }
 
-  Future<void> fetchReceipts() async {
+  Future<void> fetchReceipts({DateTime? startDate, DateTime? endDate, String? searchTerm}) async {
     debugPrint('Starting fetchReceipts()');
     _apiRequestStatus = APIRequestStatus.loading;
+    _isLoading = true;
+    _currentPage = 1;
+    _hasMoreData = true;
     notifyListeners();
 
     try {
-      debugPrint('Attempting API call to: https://lemuru.co.tz/api/receipts');
+      // Check for offline mode first
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+      final offlineData = prefs.getString('offline_receipts');
+      
+      // Check if we're in offline mode (token starts with 'offline_')
+      if (token != null && token.startsWith('offline_') && offlineData != null) {
+        debugPrint('Using offline data instead of API call');
+        
+        // Simulate a delay to mimic network call
+        await Future.delayed(const Duration(milliseconds: 500));
+        
+        // Parse the offline data
+        final List<dynamic> responseBody = jsonDecode(offlineData);
+        
+        // Apply filtering if any
+        List<dynamic> filteredData = responseBody;
+        
+        if (searchTerm != null && searchTerm.isNotEmpty) {
+          final searchLower = searchTerm.toLowerCase();
+          filteredData = filteredData.where((item) => 
+            item['companyName'].toString().toLowerCase().contains(searchLower)
+          ).toList();
+        }
+        
+        if (startDate != null && endDate != null) {
+          filteredData = filteredData.where((item) {
+            final itemDate = DateTime.parse(item['date']);
+            return itemDate.isAfter(startDate.subtract(const Duration(days: 1))) && 
+                   itemDate.isBefore(endDate.add(const Duration(days: 1)));
+          }).toList();
+        }
+        
+        List<Receipt> nwReceipts = getReceiptsFromJson(filteredData);
+        debugPrint('Successfully parsed ${nwReceipts.length} offline receipts');
+        
+        _receipts = nwReceipts;
+        _apiRequestStatus = APIRequestStatus.loaded;
+        _hasMoreData = false; // No more data in offline mode
+        _lastError = '';
+        
+        return;
+      }
+      
+      // If not in offline mode, proceed with regular API call
+      String url = '${ApiConfig.receiptsUrl}?page=$_currentPage';
+      
+      if (startDate != null && endDate != null) {
+        final startDateStr = DateFormat('yyyy-MM-dd').format(startDate);
+        final endDateStr = DateFormat('yyyy-MM-dd').format(endDate);
+        url += '&start_date=$startDateStr&end_date=$endDateStr';
+      }
+      
+      if (searchTerm != null && searchTerm.isNotEmpty) {
+        url += '&search=$searchTerm';
+      }
+      
+      debugPrint('Attempting API call to: $url');
+      
       final response = await http.get(
-        Uri.parse('https://lemuru.co.tz/api/receipts'),
+        Uri.parse(url),
         headers: {
           'Accept': 'application/json',
+          'Authorization': token != null ? 'Bearer $token' : '',
         },
       ).timeout(
         const Duration(seconds: 30),
@@ -1220,51 +1658,134 @@ class ReceiptProvider extends ChangeNotifier {
       );
 
       debugPrint('API Response Status Code: ${response.statusCode}');
-      debugPrint('API Response Headers: ${response.headers}');
 
       if (response.statusCode == 200) {
-        debugPrint('Response body length: ${response.body.length}');
-        debugPrint('First 100 characters of response: ${response.body.substring(0, min(100, response.body.length))}');
-
         Map<String, dynamic> jsonResponse = jsonDecode(response.body);
         List<dynamic> responseBody = jsonResponse['receipts']['data'] as List<dynamic>;
         debugPrint('Successfully decoded JSON. Number of items: ${responseBody.length}');
 
+        // Check if there are more pages
+        final meta = jsonResponse['receipts']['meta'];
+        _hasMoreData = meta != null && 
+            meta['current_page'] < meta['last_page'] && 
+            responseBody.isNotEmpty;
+        
         List<Receipt> nwReceipts = getReceiptsFromJson(responseBody);
         debugPrint('Successfully parsed ${nwReceipts.length} receipts');
 
         _receipts = nwReceipts;
         _apiRequestStatus = APIRequestStatus.loaded;
         _lastError = '';
-        notifyListeners();
-        debugPrint('Successfully updated state with new receipts');
+      } else if (response.statusCode == 401) {
+        // Handle unauthorized access - redirect to login
+        _lastError = 'Unauthorized access. Please login again.';
+        _apiRequestStatus = APIRequestStatus.error;
+        
+        // Clear login info
+        await prefs.clear();
       } else {
         _lastError = 'Server returned ${response.statusCode}: ${response.body}';
         debugPrint('API Error: $_lastError');
         _apiRequestStatus = APIRequestStatus.error;
-        notifyListeners();
       }
     } on SocketException catch (e) {
       _lastError = 'Network error: ${e.message}';
       debugPrint('SocketException: $_lastError');
       _apiRequestStatus = APIRequestStatus.networkError;
-      notifyListeners();
     } on TimeoutException catch (e) {
       _lastError = 'Request timed out: ${e.message}';
       debugPrint('TimeoutException: $_lastError');
       _apiRequestStatus = APIRequestStatus.networkError;
-      notifyListeners();
     } on FormatException catch (e) {
       _lastError = 'Data format error: ${e.message}';
       debugPrint('FormatException: $_lastError');
-      debugPrint('Response that caused error: ${e.source}');
       _apiRequestStatus = APIRequestStatus.error;
-      notifyListeners();
     } catch (e, stackTrace) {
       _lastError = 'Unexpected error: $e';
       debugPrint('Unexpected error: $e');
       debugPrint('Stack trace: $stackTrace');
       _apiRequestStatus = APIRequestStatus.error;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+  
+  Future<void> loadMoreReceipts({DateTime? startDate, DateTime? endDate, String? searchTerm}) async {
+    if (_isLoadingMore || !_hasMoreData) return;
+    
+    debugPrint('Loading more receipts, page: ${_currentPage + 1}');
+    _isLoadingMore = true;
+    notifyListeners();
+    
+    try {
+      // Check for offline mode first
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+      
+      // If in offline mode, we don't have pagination, so just return
+      if (token != null && token.startsWith('offline_')) {
+        debugPrint('In offline mode - no more data to load');
+        _isLoadingMore = false;
+        _hasMoreData = false;
+        notifyListeners();
+        return;
+      }
+      
+      // Build the URL with query parameters for filtering
+      String url = '${ApiConfig.receiptsUrl}?page=${_currentPage + 1}';
+      
+      if (startDate != null && endDate != null) {
+        final startDateStr = DateFormat('yyyy-MM-dd').format(startDate);
+        final endDateStr = DateFormat('yyyy-MM-dd').format(endDate);
+        url += '&start_date=$startDateStr&end_date=$endDateStr';
+      }
+      
+      if (searchTerm != null && searchTerm.isNotEmpty) {
+        url += '&search=$searchTerm';
+      }
+      
+      debugPrint('Loading more - API call to: $url');
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': token != null ? 'Bearer $token' : '',
+        },
+      ).timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        Map<String, dynamic> jsonResponse = jsonDecode(response.body);
+        List<dynamic> responseBody = jsonResponse['receipts']['data'] as List<dynamic>;
+        
+        // Check if there are more pages
+        final meta = jsonResponse['receipts']['meta'];
+        _hasMoreData = meta != null && 
+            meta['current_page'] < meta['last_page'] && 
+            responseBody.isNotEmpty;
+            
+        // Update current page
+        _currentPage++;
+        
+        if (responseBody.isNotEmpty) {
+          List<Receipt> newReceipts = getReceiptsFromJson(responseBody);
+          _receipts.addAll(newReceipts);
+          debugPrint('Added ${newReceipts.length} more receipts. Total: ${_receipts.length}');
+        } else {
+          _hasMoreData = false;
+          debugPrint('No more receipts to load');
+        }
+      } else {
+        debugPrint('Error loading more: ${response.statusCode}');
+        // Don't update _lastError here - we don't want to show an error message
+        // for pagination, just stop loading more
+        _hasMoreData = false;
+      }
+    } catch (e) {
+      debugPrint('Error loading more: $e');
+      _hasMoreData = false;
+    } finally {
+      _isLoadingMore = false;
       notifyListeners();
     }
   }
