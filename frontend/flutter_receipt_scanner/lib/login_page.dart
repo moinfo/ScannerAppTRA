@@ -1,8 +1,11 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_receipt_scanner/dashboard.dart';
 import 'package:flutter_receipt_scanner/main.dart';
+import 'package:flutter_receipt_scanner/providers/app_state_provider.dart';
+import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
@@ -32,43 +35,21 @@ class _LoginPageState extends State<LoginPage> {
   // Helper method to bypass login for testing in case the server is down
   Future<void> _bypassLogin() async {
     debugPrint('Bypassing login for offline mode');
-    final prefs = await SharedPreferences.getInstance();
     
-    // Store dummy authentication data
-    await prefs.setString('token', 'offline_token_${DateTime.now().millisecondsSinceEpoch}');
-    await prefs.setString('user', jsonEncode({
-      'name': _emailController.text.isEmpty ? 'Offline User' : _emailController.text.split('@')[0],
-      'email': _emailController.text.isEmpty ? 'offline@example.com' : _emailController.text,
-    }));
-    await prefs.setBool('isLoggedIn', true);
+    // Get app state provider
+    final appStateProvider = Provider.of<AppStateProvider>(context, listen: false);
     
-    // Store some dummy receipt data for offline testing
-    await prefs.setString('offline_receipts', jsonEncode([
-      {
-        'id': 1,
-        'companyName': 'Grocery Store TZ',
-        'date': '2025-03-24',
-        'time': '10:30 AM',
-        'amount': '12500',
-        'items': '5 items'
-      },
-      {
-        'id': 2,
-        'companyName': 'Electronics Shop',
-        'date': '2025-03-23',
-        'time': '02:15 PM',
-        'amount': '250000',
-        'items': '2 items'
-      },
-      {
-        'id': 3,
-        'companyName': 'Pharmacy',
-        'date': '2025-03-22',
-        'time': '09:45 AM',
-        'amount': '35000',
-        'items': '3 items'
-      }
-    ]));
+    // Perform offline login
+    final success = await appStateProvider.loginOffline(
+      _emailController.text.isEmpty ? 'offline@example.com' : _emailController.text
+    );
+    
+    if (!success) {
+      setState(() {
+        _errorMessage = 'Failed to enter offline mode. Please try again.';
+      });
+      return;
+    }
     
     if (!mounted) return;
     
@@ -86,7 +67,7 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (context) => const MyHomePage(),
+          builder: (context) => const Dashboard(),
         ),
       );
     });
@@ -109,83 +90,41 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      // Print debug information
-      debugPrint('Attempting login with URL: $loginUrl');
-      debugPrint('Email: ${_emailController.text.trim()}');
+      // Get app state provider
+      final appStateProvider = Provider.of<AppStateProvider>(context, listen: false);
+      final success = await appStateProvider.login(
+        _emailController.text.trim(),
+        _passwordController.text,
+      );
       
-      final response = await http.post(
-        Uri.parse(loginUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode({
-          'email': _emailController.text.trim(),
-          'password': _passwordController.text,
-        }),
-      ).timeout(const Duration(seconds: 15));
+      if (success) {
+        if (!mounted) return;
 
-      debugPrint('Login response status: ${response.statusCode}');
-      debugPrint('Login response body: ${response.body}');
-      
-      if (response.statusCode == 200) {
-        try {
-          final data = jsonDecode(response.body);
-          
-          if (data['token'] == null) {
-            throw Exception('Token not found in response');
-          }
-          
-          // Save token and user info to SharedPreferences
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('token', data['token']);
-          await prefs.setString('user', jsonEncode(data['user'] ?? {'name': 'User', 'email': _emailController.text.trim()}));
-          await prefs.setBool('isLoggedIn', true);
-          
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Login successful! Welcome ${appStateProvider.userName}'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        
+        // Navigate to dashboard and remove login page from stack
+        // Delayed to allow the user to see the success message
+        Future.delayed(const Duration(seconds: 1), () {
           if (!mounted) return;
-
-          // Show success message
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Login successful! Welcome ${data['user']['name'] ?? 'User'}'),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 2),
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => const Dashboard(),
             ),
           );
-          
-          // Navigate to main app and remove login page from stack
-          // Delayed to allow the user to see the success message
-          Future.delayed(const Duration(seconds: 1), () {
-            if (!mounted) return;
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (context) => const MyHomePage(),
-              ),
-            );
-          });
-        } catch (jsonError) {
-          debugPrint('Error parsing response: $jsonError');
-          setState(() {
-            _errorMessage = 'Invalid server response. Please try again.';
-          });
-        }
-      } else if (response.statusCode == 404) {
-        // Handle 404 Not Found - Backend server issue
-        setState(() {
-          _errorMessage = 'Server Error: The login endpoint is not available (404). Please use the "Enter App" button below to access the app.';
         });
       } else {
-        // Handle other errors
-        try {
-          final error = jsonDecode(response.body);
-          setState(() {
-            _errorMessage = error['message'] ?? 'Login failed with status ${response.statusCode}';
-          });
-        } catch (jsonError) {
-          setState(() {
-            _errorMessage = 'Login failed with status ${response.statusCode}';
-          });
-        }
+        setState(() {
+          _errorMessage = appStateProvider.connectionState == AppConnectionState.offline 
+              ? 'Network error: No internet connection. Please use offline mode.' 
+              : 'Login failed. Please check your credentials.';
+        });
       }
     } catch (e) {
       debugPrint('Login exception: $e');

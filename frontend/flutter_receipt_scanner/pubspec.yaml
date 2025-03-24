@@ -43,6 +43,14 @@ dependencies:
   url_launcher: 6.3.1  # Use a recent version that's compatible with Flutter 3.19
   provider: ^6.0.4
   shared_preferences: ^2.2.0
+  sqflite: ^2.3.2
+  path: ^1.8.3
+  connectivity_plus: ^5.0.2
+  path_provider: ^2.1.2
+  fl_chart: ^0.66.2
+  pdf: ^3.10.7
+  csv: ^5.1.1
+  file_picker: ^9.0.0
 
 dev_dependencies:
   flutter_test:

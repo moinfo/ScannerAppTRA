@@ -4,7 +4,13 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter_receipt_scanner/dashboard.dart';
 import 'package:flutter_receipt_scanner/login_page.dart';
+import 'package:flutter_receipt_scanner/providers/app_state_provider.dart';
+import 'package:flutter_receipt_scanner/providers/purchases_provider.dart';
+import 'package:flutter_receipt_scanner/providers/receipt_provider.dart';
+import 'package:flutter_receipt_scanner/providers/sales_provider.dart';
+import 'package:flutter_receipt_scanner/providers/vat_provider.dart';
 import 'package:flutter_receipt_scanner/utils/api_request_status.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -52,8 +58,14 @@ class MyApp extends StatelessWidget {
   
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (context) => ReceiptProvider(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (context) => AppStateProvider()),
+        ChangeNotifierProvider(create: (context) => ReceiptProvider()),
+        ChangeNotifierProvider(create: (context) => SalesProvider()),
+        ChangeNotifierProvider(create: (context) => PurchasesProvider()),
+        ChangeNotifierProvider(create: (context) => VatProvider()),
+      ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'Flutter Receipt Scanner',
@@ -66,6 +78,7 @@ class MyApp extends StatelessWidget {
           'scan': (context) => const ScanPage(),
           'login': (context) => const LoginPage(),
           'home': (context) => const MyHomePage(),
+          'dashboard': (context) => const Dashboard(),
         },
       ),
     );
