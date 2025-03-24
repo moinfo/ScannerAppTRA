@@ -3,7 +3,7 @@ import 'package:flutter_receipt_scanner/login_page.dart';
 import 'package:flutter_receipt_scanner/main.dart';
 import 'package:flutter_receipt_scanner/providers/app_state_provider.dart';
 import 'package:flutter_receipt_scanner/providers/vat_provider.dart';
-// import 'package:flutter_receipt_scanner/screens/auto_purchases_screen.dart';
+import 'package:flutter_receipt_scanner/screens/auto_purchases_screen.dart';
 import 'package:flutter_receipt_scanner/screens/home_screen.dart';
 import 'package:flutter_receipt_scanner/screens/purchases_screen.dart';
 import 'package:flutter_receipt_scanner/screens/reports_screen.dart';
@@ -39,7 +39,8 @@ class _DashboardState extends State<Dashboard> {
   
   void _initializeScreens() {
     _screensCache = [
-      // const HomeScreen(),
+      const HomeScreen(),
+      const AutoPurchasesScreen(),
       const SalesScreen(),
       const PurchasesScreen(),
       const VatPaymentScreen(),
@@ -178,6 +179,10 @@ class _DashboardState extends State<Dashboard> {
             label: 'Home',
           ),
           BottomNavigationBarItem(
+            icon: Icon(Icons.receipt_long),
+            label: 'Auto',
+          ),
+          BottomNavigationBarItem(
             icon: Icon(Icons.shopping_cart),
             label: 'Sales',
           ),
@@ -266,8 +271,8 @@ class _DashboardState extends State<Dashboard> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.shopping_cart),
-              title: const Text('Sales'),
+              leading: const Icon(Icons.receipt_long),
+              title: const Text('Auto Purchases'),
               selected: _selectedIndex == 1,
               onTap: () {
                 _onItemTapped(1);
@@ -275,11 +280,20 @@ class _DashboardState extends State<Dashboard> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.shopping_bag),
-              title: const Text('Purchases'),
+              leading: const Icon(Icons.shopping_cart),
+              title: const Text('Sales'),
               selected: _selectedIndex == 2,
               onTap: () {
                 _onItemTapped(2);
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.shopping_bag),
+              title: const Text('Purchases'),
+              selected: _selectedIndex == 3,
+              onTap: () {
+                _onItemTapped(3);
                 Navigator.pop(context);
               },
             ),
@@ -298,15 +312,6 @@ class _DashboardState extends State<Dashboard> {
             ListTile(
               leading: const Icon(Icons.payments),
               title: const Text('VAT Payments'),
-              selected: _selectedIndex == 3,
-              onTap: () {
-                _onItemTapped(3);
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.qr_code_scanner),
-              title: const Text('Scan Receipt'),
               selected: _selectedIndex == 4,
               onTap: () {
                 _onItemTapped(4);
@@ -314,11 +319,20 @@ class _DashboardState extends State<Dashboard> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.bar_chart),
-              title: const Text('Reports'),
+              leading: const Icon(Icons.qr_code_scanner),
+              title: const Text('Scan Receipt'),
               selected: _selectedIndex == 5,
               onTap: () {
                 _onItemTapped(5);
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.bar_chart),
+              title: const Text('Reports'),
+              selected: _selectedIndex == 6,
+              onTap: () {
+                _onItemTapped(6);
                 Navigator.pop(context);
               },
             ),
