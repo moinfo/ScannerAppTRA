@@ -23,7 +23,10 @@ class VatProvider extends ChangeNotifier {
   bool get isReportLoading => _isReportLoading;
   bool get isOperationInProgress => _isOperationInProgress;
   
-  double get totalVatPayable => _vatPayments.fold(0, (sum, payment) => sum + payment.amountPayable);
+  // Get sum of all VAT payables where status is not Completed
+  double get totalVatPayable => _vatPayments
+      .where((payment) => payment.status != 'Completed')
+      .fold(0, (sum, payment) => sum + payment.amountPayable);
   int get pendingPaymentsCount => _vatPayments.where((payment) => payment.status == 'Pending').length;
   int get completedPaymentsCount => _vatPayments.where((payment) => payment.status == 'Completed').length;
 

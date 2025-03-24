@@ -21,8 +21,8 @@ class _VatPaymentScreenState extends State<VatPaymentScreen> {
   final _moneyFormat = NumberFormat.currency(symbol: 'TZS ', decimalDigits: 2);
   
   // Columns for the data table - these should match the keys in the map used by the DataTableWidget
-  final List<String> _columns = ['id', 'period', 'dueDate', 'salesVat', 'purchasesVat', 'amountPayable', 'status'];
-  final List<String> _columnNames = ['ID', 'Period', 'Due Date', 'Sales VAT', 'Purchases VAT', 'VAT Payable', 'Status'];
+  final List<String> _columns = ['id', 'period', 'dueDate', 'salesVat', 'purchasesVat', 'amountPayable', 'status', 'actions'];
+  final List<String> _columnNames = ['ID', 'Period', 'Due Date', 'Sales VAT', 'Purchases VAT', 'VAT Payable', 'Status', 'Actions'];
 
   @override
   void initState() {
@@ -746,6 +746,13 @@ class _VatPaymentScreenState extends State<VatPaymentScreen> {
                 tooltip: 'Refresh',
               ),
               IconButton(
+                icon: const Icon(Icons.add_circle),
+                onPressed: isLoading ? null : () {
+                  _showCreateVatPaymentDialog();
+                },
+                tooltip: 'Create VAT Payment',
+              ),
+              IconButton(
                 icon: const Icon(Icons.file_download),
                 onPressed: isLoading ? null : () {
                   // Export data functionality
@@ -815,6 +822,40 @@ class _VatPaymentScreenState extends State<VatPaymentScreen> {
                             startDate: _startDate,
                             endDate: _endDate,
                             onDateRangeChanged: _handleDateRangeChanged,
+                            actionBuilder: (payment) {
+                              final isPaid = payment['status'] == 'Paid' || payment['status'] == 'Completed';
+                              return Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (!isPaid)
+                                    IconButton(
+                                      icon: const Icon(Icons.payment, color: Colors.green),
+                                      tooltip: 'Pay VAT',
+                                      onPressed: () {
+                                        final paymentId = int.tryParse(payment['id'].toString()) ?? 0;
+                                        _showPayVatDialog(payment, paymentId);
+                                      },
+                                    ),
+                                  IconButton(
+                                    icon: const Icon(Icons.visibility, color: Colors.blue),
+                                    tooltip: 'View Details',
+                                    onPressed: () => _showVatPaymentDetails(payment),
+                                  ),
+                                  if (isPaid)
+                                    IconButton(
+                                      icon: const Icon(Icons.print, color: Colors.purple),
+                                      tooltip: 'Print Receipt',
+                                      onPressed: () {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Print functionality not implemented'),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                ],
+                              );
+                            },
                           ),
               ),
             ],
@@ -840,6 +881,266 @@ class _VatPaymentScreenState extends State<VatPaymentScreen> {
         ),
       );
     }
+  }
+
+  void _showCreateVatPaymentDialog() {
+    // Current date and time for reference
+    final now = DateTime.now();
+    final periodFormatter = DateFormat('MMM yyyy');
+    final currentPeriod = periodFormatter.format(now);
+    
+    // Controllers for the form fields
+    final periodController = TextEditingController(text: currentPeriod);
+    final amountController = TextEditingController();
+    final dueDateController = TextEditingController(
+      text: DateFormat('yyyy-MM-dd').format(now.add(const Duration(days: 30)))
+    );
+    
+    // Values for VAT calculation
+    double salesAmount = 0;
+    double purchasesAmount = 0;
+    double salesVat = 0;
+    double purchasesVat = 0;
+    double vatPayable = 0;
+    final vatRate = 0.18; // 18% VAT rate
+    
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          // Function to calculate VAT values
+          void calculateVat() {
+            setState(() {
+              salesVat = salesAmount * vatRate;
+              purchasesVat = purchasesAmount * vatRate;
+              vatPayable = salesVat - purchasesVat;
+              if (vatPayable > 0) {
+                amountController.text = vatPayable.toStringAsFixed(2);
+              } else {
+                amountController.text = '0';
+              }
+            });
+          }
+          
+          return AlertDialog(
+            title: const Text('Create VAT Payment'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: periodController,
+                    decoration: const InputDecoration(
+                      labelText: 'Period',
+                      hintText: 'e.g. Jan 2025',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Sales amount with VAT calculation
+                  TextField(
+                    decoration: const InputDecoration(
+                      labelText: 'Sales Amount',
+                      hintText: 'Enter total sales amount',
+                      border: OutlineInputBorder(),
+                      prefixText: 'TZS ',
+                    ),
+                    keyboardType: TextInputType.number,
+                    onChanged: (value) {
+                      salesAmount = double.tryParse(value) ?? 0;
+                      calculateVat();
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Sales VAT (18%): ${_moneyFormat.format(salesVat)}',
+                    style: TextStyle(color: Colors.grey[600]),
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Purchases amount with VAT calculation
+                  TextField(
+                    decoration: const InputDecoration(
+                      labelText: 'Purchases Amount',
+                      hintText: 'Enter total purchases amount',
+                      border: OutlineInputBorder(),
+                      prefixText: 'TZS ',
+                    ),
+                    keyboardType: TextInputType.number,
+                    onChanged: (value) {
+                      purchasesAmount = double.tryParse(value) ?? 0;
+                      calculateVat();
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Purchases VAT (18%): ${_moneyFormat.format(purchasesVat)}',
+                    style: TextStyle(color: Colors.grey[600]),
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // VAT Payable (calculated)
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        const Text(
+                          'VAT Payable: ',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          _moneyFormat.format(vatPayable),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                            color: vatPayable > 0 ? Colors.blue.shade800 : Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Due date
+                  InkWell(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: DateTime.now().add(const Duration(days: 30)),
+                        firstDate: DateTime.now(),
+                        lastDate: DateTime.now().add(const Duration(days: 365)),
+                      );
+                      if (picked != null) {
+                        setState(() {
+                          dueDateController.text = DateFormat('yyyy-MM-dd').format(picked);
+                        });
+                      }
+                    },
+                    child: AbsorbPointer(
+                      child: TextField(
+                        controller: dueDateController,
+                        decoration: const InputDecoration(
+                          labelText: 'Due Date',
+                          hintText: 'Select due date',
+                          border: OutlineInputBorder(),
+                          suffixIcon: Icon(Icons.calendar_today),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: vatPayable <= 0
+                    ? null
+                    : () async {
+                        // Create VAT payment
+                        final period = periodController.text.trim();
+                        if (period.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Please enter a valid period'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                          return;
+                        }
+                        
+                        // Close dialog
+                        Navigator.of(context).pop();
+                        
+                        // Show loading indicator
+                        showDialog(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (context) => const AlertDialog(
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                CircularProgressIndicator(),
+                                SizedBox(height: 16),
+                                Text('Creating VAT payment...'),
+                              ],
+                            ),
+                          ),
+                        );
+                        
+                        try {
+                          // Create VAT payment object
+                          final payment = VatPayment(
+                            id: 0, // Will be assigned by the server or offline storage
+                            period: period,
+                            salesVat: salesVat,
+                            purchasesVat: purchasesVat,
+                            amountPayable: vatPayable,
+                            status: 'Pending',
+                            dueDate: dueDateController.text,
+                          );
+                          
+                          // Create payment via provider
+                          final vatProvider = Provider.of<VatProvider>(context, listen: false);
+                          final success = await vatProvider.createVatPayment(payment);
+                          
+                          // Close loading dialog
+                          if (context.mounted) {
+                            Navigator.of(context).pop();
+                          }
+                          
+                          // Show success or error message
+                          if (success && context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('VAT payment for $period created successfully'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                            
+                            // Refresh data
+                            _loadVatPaymentData();
+                          } else if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Error creating VAT payment: ${vatProvider.lastError}'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          // Close loading dialog
+                          if (context.mounted) {
+                            Navigator.of(context).pop();
+                          }
+                          
+                          // Show error message
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Error creating VAT payment: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                child: const Text('Create VAT Payment'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   @override

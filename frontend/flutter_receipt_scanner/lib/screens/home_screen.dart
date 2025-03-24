@@ -4,6 +4,7 @@ import 'package:flutter_receipt_scanner/providers/purchases_provider.dart';
 import 'package:flutter_receipt_scanner/providers/receipt_provider.dart';
 import 'package:flutter_receipt_scanner/providers/sales_provider.dart';
 import 'package:flutter_receipt_scanner/providers/vat_provider.dart';
+import 'package:flutter_receipt_scanner/services/vat_service.dart';
 import 'package:flutter_receipt_scanner/utils/api_request_status.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -21,6 +22,14 @@ class _HomeScreenState extends State<HomeScreen> {
   // List to store all recent transactions combined from different sources
   final List<Map<String, dynamic>> _recentTransactions = [];
   bool _isLoadingTransactions = false;
+  
+  // Store current period values
+  final now = DateTime.now();
+  final currentMonth = DateTime.now().month;
+  final currentYear = DateTime.now().year;
+  
+  // Count of receipts scanned this month
+  int _currentMonthReceiptCount = 0;
 
   @override
   void initState() {
@@ -63,6 +72,23 @@ class _HomeScreenState extends State<HomeScreen> {
       // Only add receipt fetch if provider is available
       if (receiptProvider != null) {
         futures.add(receiptProvider.fetchReceipts());
+        
+        // Count current month receipts
+        final allReceipts = receiptProvider.receipts;
+        _currentMonthReceiptCount = 0;
+        
+        for (var receipt in allReceipts) {
+          if (receipt.date != null) {
+            try {
+              final receiptDate = DateTime.parse(receipt.date!);
+              if (receiptDate.month == currentMonth && receiptDate.year == currentYear) {
+                _currentMonthReceiptCount++;
+              }
+            } catch (e) {
+              // Skip if date parsing fails
+            }
+          }
+        }
       }
       
       await Future.wait(futures);
@@ -289,8 +315,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       isLoading: vatProvider.isLoading,
                     ),
                     _buildSummaryCard(
-                      title: 'Receipts Scanned',
-                      value: receiptProvider?.receipts.length.toDouble() ?? 0,
+                      title: 'Receipts (This Month)',
+                      value: _currentMonthReceiptCount.toDouble(),
                       icon: Icons.receipt,
                       color: Colors.purple,
                       isCount: true,
@@ -301,7 +327,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               
               // Recent transactions section
-              const SizedBox(height: 24),
+              const SizedBox(height: 0),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -320,7 +346,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 0),
               
               // Recent transactions list
               Expanded(

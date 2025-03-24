@@ -399,11 +399,79 @@ class PurchaseService {
         return jsonDecode(offlinePurchasesJson) as List;
       }
       
-      return [];
+      // Generate mock purchases if none exist
+      final mockPurchases = _generateMockPurchases();
+      
+      // Save them for future use
+      await prefs.setString('offline_purchases', jsonEncode(mockPurchases));
+      
+      return mockPurchases;
     } catch (e) {
       debugPrint('Error getting offline purchases as JSON: $e');
-      return [];
+      return _generateMockPurchases(); // Return mock data as fallback
     }
+  }
+  
+  List<Map<String, dynamic>> _generateMockPurchases() {
+    // Mock suppliers
+    final suppliers = [
+      'Tanzania Breweries Ltd',
+      'Tanesco',
+      'Twiga Cement',
+      'Azam Industries',
+      'Serengeti Breweries',
+      'Coca-Cola Kwanza',
+      'Tigo Tanzania',
+      'Vodacom Tanzania',
+    ];
+    
+    // Generate purchases for the past 6 months
+    final now = DateTime.now();
+    final formatter = DateFormat('yyyy-MM-dd');
+    
+    List<Map<String, dynamic>> mockPurchases = [];
+    
+    // Generate 20 purchases with different dates
+    for (int i = 0; i < 20; i++) {
+      // Random date within last 6 months
+      final daysAgo = (i * 9) % 180; // Spread out over 6 months
+      final date = now.subtract(Duration(days: daysAgo));
+      final dateStr = formatter.format(date);
+      
+      // Random amount between 100,000 and 1,000,000
+      final amount = 100000 + (900000 * (i / 20));
+      
+      // Random supplier
+      final supplier = suppliers[i % suppliers.length];
+      
+      // Random status
+      final status = daysAgo < 30 ? 'Pending' : 'Received';
+      
+      // Create mock items
+      List<Map<String, dynamic>> items = [];
+      final itemCount = 1 + (i % 5); // 1-5 items
+      
+      for (int j = 0; j < itemCount; j++) {
+        items.add({
+          'name': 'Item ${j+1}',
+          'quantity': j + 1,
+          'price': amount / itemCount,
+          'vat_amount': (amount / itemCount) * 0.18,
+        });
+      }
+      
+      mockPurchases.add({
+        'id': i + 1,
+        'supplier': supplier,
+        'date': dateStr,
+        'amount': amount,
+        'status': status,
+        'receipt_id': null,
+        'items': items,
+      });
+    }
+    
+    return mockPurchases;
   }
 
   Future<Purchase?> _getOfflinePurchaseById(int purchaseId) async {

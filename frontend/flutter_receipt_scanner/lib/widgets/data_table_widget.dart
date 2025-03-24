@@ -13,6 +13,7 @@ class DataTableWidget extends StatefulWidget {
   final DateTime? startDate;
   final DateTime? endDate;
   final Function(DateTime?, DateTime?) onDateRangeChanged;
+  final Widget Function(Map<String, dynamic>)? actionBuilder;
 
   const DataTableWidget({
     Key? key,
@@ -27,6 +28,7 @@ class DataTableWidget extends StatefulWidget {
     this.startDate,
     this.endDate,
     required this.onDateRangeChanged,
+    this.actionBuilder,
   }) : super(key: key);
 
   @override
@@ -285,9 +287,13 @@ class _DataTableWidgetState extends State<DataTableWidget> {
                           rows: _filteredData.map((item) {
                             return DataRow(
                               cells: widget.columns.map((column) {
-                                return DataCell(
-                                  Text(item[column]?.toString() ?? ''),
-                                );
+                                if (column == 'actions' && widget.actionBuilder != null) {
+                                  return DataCell(widget.actionBuilder!(item));
+                                } else {
+                                  return DataCell(
+                                    Text(item[column]?.toString() ?? ''),
+                                  );
+                                }
                               }).toList(),
                               onSelectChanged: widget.onRowTap != null
                                   ? (_) => widget.onRowTap!(item)
