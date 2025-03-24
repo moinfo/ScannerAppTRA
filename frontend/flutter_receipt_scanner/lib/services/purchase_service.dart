@@ -162,13 +162,18 @@ class PurchaseService {
       );
 
       if (response.success) {
-        // Check if the data is under 'data' or 'receipts' key (API might return either)
+        // Check if the data is in the expected format
         final List<dynamic> purchasesData;
         if (response.data!.containsKey('data')) {
           purchasesData = response.data!['data'] as List;
         } else if (response.data!.containsKey('receipts')) {
           purchasesData = response.data!['receipts']['data'] as List;
+        } else if (response.data!.containsKey('purchases') && response.data!['purchases'].containsKey('data')) {
+          // New API format
+          purchasesData = response.data!['purchases']['data'] as List;
+          debugPrint('Found purchases.data format with ${purchasesData.length} items');
         } else {
+          debugPrint('Unexpected API response format: ${response.data}');
           return ApiResponse.error('Unexpected API response format');
         }
         

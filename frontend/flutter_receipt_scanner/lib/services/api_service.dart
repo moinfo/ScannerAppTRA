@@ -69,8 +69,11 @@ class ApiService {
 
   // Check if in offline mode
   Future<bool> isOfflineMode() async {
-    final token = await _getToken();
-    return token != null && token.startsWith('offline_');
+    // Force online mode for backend testing
+    return false;
+    // Original code:
+    // final token = await _getToken();
+    // return token != null && token.startsWith('offline_');
   }
 
   // Helper method to build headers

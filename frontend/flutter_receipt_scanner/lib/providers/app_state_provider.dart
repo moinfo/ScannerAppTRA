@@ -36,15 +36,21 @@ class AppStateProvider extends ChangeNotifier {
   // Initialize app state
   Future<void> _initAppState() async {
     try {
-      // Check connectivity
-      final connectivityResult = await _connectivity.checkConnectivity();
-      _updateConnectionState(connectivityResult);
+      // Force online mode for backend testing
+      _connectionState = AppConnectionState.online;
+      _isOfflineMode = false;
       
       // Check login status
       await _checkLoginStatus();
+      
+      // Override offline mode for testing
+      _isOfflineMode = false;
+      
+      notifyListeners();
     } catch (e) {
       debugPrint('Error initializing app state: $e');
-      _connectionState = AppConnectionState.offline;
+      _connectionState = AppConnectionState.online; // Force online mode even on error
+      _isOfflineMode = false;
       notifyListeners();
     }
   }
@@ -58,20 +64,11 @@ class AppStateProvider extends ChangeNotifier {
 
   // Update connection state based on connectivity result
   void _updateConnectionState(ConnectivityResult result) {
-    final wasOffline = _connectionState == AppConnectionState.offline;
-    
-    if (result == ConnectivityResult.none) {
-      _connectionState = AppConnectionState.offline;
-    } else {
-      _connectionState = AppConnectionState.online;
-    }
+    // Force online mode for backend testing
+    _connectionState = AppConnectionState.online;
+    _isOfflineMode = false;
     
     notifyListeners();
-    
-    // If we were offline and now we're online, try to sync data
-    if (wasOffline && _connectionState == AppConnectionState.online) {
-      _syncDataIfNeeded();
-    }
   }
 
   // Check login status

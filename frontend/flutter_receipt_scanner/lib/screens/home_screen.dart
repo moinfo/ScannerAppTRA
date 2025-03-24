@@ -72,8 +72,12 @@ class _HomeScreenState extends State<HomeScreen> {
       // Only add receipt fetch if provider is available
       if (receiptProvider != null) {
         futures.add(receiptProvider.fetchReceipts());
-        
-        // Count current month receipts
+      }
+      
+      await Future.wait(futures);
+      
+      // Count current month receipts
+      if (receiptProvider != null) {
         final allReceipts = receiptProvider.receipts;
         _currentMonthReceiptCount = 0;
         
@@ -90,8 +94,6 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         }
       }
-      
-      await Future.wait(futures);
 
       // Combine recent transactions from different sources
       _combineRecentTransactions();
