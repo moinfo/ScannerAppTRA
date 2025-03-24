@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_receipt_scanner/login_page.dart';
 import 'package:flutter_receipt_scanner/main.dart';
+import 'package:flutter_receipt_scanner/providers/app_state_provider.dart';
+import 'package:flutter_receipt_scanner/providers/vat_provider.dart';
 import 'package:flutter_receipt_scanner/screens/home_screen.dart';
 import 'package:flutter_receipt_scanner/screens/purchases_screen.dart';
 import 'package:flutter_receipt_scanner/screens/reports_screen.dart';
 import 'package:flutter_receipt_scanner/screens/sales_screen.dart';
 import 'package:flutter_receipt_scanner/screens/scan_screen.dart';
 import 'package:flutter_receipt_scanner/screens/vat_payment_screen.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
@@ -23,20 +26,48 @@ class _DashboardState extends State<Dashboard> {
   String _userEmail = "";
   bool _isOfflineMode = false;
 
-  // List of screens to navigate between
-  final List<Widget> _screens = [
-    const HomeScreen(),
-    const SalesScreen(),
-    const PurchasesScreen(),
-    const VatPaymentScreen(),
-    const ScanScreen(),
-    const ReportsScreen(),
-  ];
+  // We'll use a getter for screens to ensure providers are available each time
+  List<Widget>? _screensCache;
+  
+  List<Widget> get _screens {
+    if (_screensCache == null) {
+      _initializeScreens();
+    }
+    return _screensCache!;
+  }
+  
+  void _initializeScreens() {
+    _screensCache = [
+      const HomeScreen(),
+      const SalesScreen(),
+      const PurchasesScreen(),
+      const VatPaymentScreen(),
+      const ScanScreen(),
+      const ReportsScreen(),
+    ];
+  }
 
   @override
   void initState() {
     super.initState();
     _loadUserInfo();
+    
+    // Initialize screens after the first frame when providers are ready
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // This ensures providers are accessible
+      if (mounted) {
+        try {
+          // Access providers to ensure they're initialized
+          Provider.of<VatProvider>(context, listen: false);
+          Provider.of<AppStateProvider>(context, listen: false);
+          
+          // Now initialize the screens
+          _initializeScreens();
+        } catch (e) {
+          debugPrint('Error initializing screens: $e');
+        }
+      }
+    });
   }
 
   Future<void> _loadUserInfo() async {
@@ -93,16 +124,18 @@ class _DashboardState extends State<Dashboard> {
       ),
     );
     
-    // Navigate back to login page
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (context) => const LoginPage(),
-      ),
-    );
+    // Navigate back to login page using named route
+    Navigator.of(context).pushReplacementNamed('login');
   }
 
   @override
   Widget build(BuildContext context) {
+    // Access providers to ensure they're properly initialized
+    final vatProvider = Provider.of<VatProvider>(context, listen: false);
+    final appStateProvider = Provider.of<AppStateProvider>(context, listen: false);
+    
+    // Make sure screens are initialized (will use the getter)
+    
     return Scaffold(
       appBar: AppBar(
         title: Column(

@@ -78,7 +78,42 @@ class MyApp extends StatelessWidget {
           'scan': (context) => const ScanPage(),
           'login': (context) => const LoginPage(),
           'home': (context) => const MyHomePage(),
-          'dashboard': (context) => const Dashboard(),
+          'dashboard': (context) {
+            // Instead of directly accessing providers here, wrap the Dashboard
+            // in a Builder widget to ensure context is correct
+            return Builder(
+              builder: (context) {
+                try {
+                  // Pre-access providers to ensure they're available
+                  Provider.of<AppStateProvider>(context, listen: false);
+                  Provider.of<VatProvider>(context, listen: false);
+                  Provider.of<ReceiptProvider>(context, listen: false);
+                  Provider.of<SalesProvider>(context, listen: false);
+                  Provider.of<PurchasesProvider>(context, listen: false);
+                  
+                  // If everything is OK, return the Dashboard
+                  return const Dashboard();
+                } catch (e) {
+                  // If there's an error accessing providers, show a loading screen
+                  debugPrint('Error accessing providers in dashboard route: $e');
+                  return Scaffold(
+                    body: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const CircularProgressIndicator(),
+                          const SizedBox(height: 16),
+                          Text('Initializing app...', 
+                            style: TextStyle(color: Colors.grey[600]),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+              }
+            );
+          },
         },
       ),
     );

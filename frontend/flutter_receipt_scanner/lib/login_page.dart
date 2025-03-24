@@ -65,11 +65,14 @@ class _LoginPageState extends State<LoginPage> {
     // Navigate with a delay to allow the message to be seen
     Future.delayed(const Duration(seconds: 1), () {
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => const Dashboard(),
-        ),
-      );
+      // Navigator.of(context).pushReplacement(
+      //   MaterialPageRoute(
+      //     builder: (context) => const Dashboard(),
+      //   ),
+      // );
+      
+      // Use named route to ensure proper provider inheritance
+      Navigator.of(context).pushReplacementNamed('dashboard');
     });
   }
 
@@ -113,11 +116,14 @@ class _LoginPageState extends State<LoginPage> {
         // Delayed to allow the user to see the success message
         Future.delayed(const Duration(seconds: 1), () {
           if (!mounted) return;
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) => const Dashboard(),
-            ),
-          );
+          // Navigator.of(context).pushReplacement(
+          //   MaterialPageRoute(
+          //     builder: (context) => const Dashboard(),
+          //   ),
+          // );
+          
+          // Use named route to ensure proper provider inheritance
+          Navigator.of(context).pushReplacementNamed('dashboard');
         });
       } else {
         setState(() {

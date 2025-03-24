@@ -28,14 +28,28 @@ class _VatPaymentScreenState extends State<VatPaymentScreen> {
   void initState() {
     super.initState();
     // Fetch VAT payment data when the screen initializes
+    // Using post-frame callback to ensure context is ready
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadVatPaymentData();
+      if (mounted) {
+        _loadVatPaymentData();
+      }
     });
   }
 
   void _loadVatPaymentData() {
-    final vatProvider = Provider.of<VatProvider>(context, listen: false);
-    vatProvider.fetchVatPayments(startDate: _startDate, endDate: _endDate);
+    // Using try-catch to handle potential provider access issues
+    try {
+      final vatProvider = Provider.of<VatProvider>(context, listen: false);
+      vatProvider.fetchVatPayments(startDate: _startDate, endDate: _endDate);
+    } catch (e) {
+      debugPrint('Error accessing VatProvider: $e');
+      // Retry after a short delay if provider wasn't ready
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          _loadVatPaymentData();
+        }
+      });
+    }
   }
 
   void _handleSearch(String query) {
@@ -687,8 +701,10 @@ class _VatPaymentScreenState extends State<VatPaymentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer2<VatProvider, AppStateProvider>(
-      builder: (context, vatProvider, appStateProvider, _) {
+    // Catch any provider not found errors
+    try {
+      return Consumer2<VatProvider, AppStateProvider>(
+        builder: (context, vatProvider, appStateProvider, _) {
         final isLoading = vatProvider.isLoading;
         final isError = vatProvider.apiRequestStatus == APIRequestStatus.error;
         final isOffline = appStateProvider.isOffline;
@@ -806,6 +822,24 @@ class _VatPaymentScreenState extends State<VatPaymentScreen> {
         );
       },
     );
+    } catch (e) {
+      debugPrint('Error accessing providers in VatPaymentScreen build: $e');
+      // Fallback UI when providers aren't available
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text('Initializing VAT payments...', 
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
   }
 
   @override
