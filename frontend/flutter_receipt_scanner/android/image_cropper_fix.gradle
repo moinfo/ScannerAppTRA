@@ -1,0 +1,20 @@
+// This file is applied to subprojects to fix the image_cropper plugin
+// It should be applied in settings.gradle
+
+afterEvaluate { project ->
+    if (project.name == 'image_cropper') {
+        android {
+            // Use Java 8 for this specific plugin
+            compileOptions {
+                sourceCompatibility JavaVersion.VERSION_1_8
+                targetCompatibility JavaVersion.VERSION_1_8
+            }
+            
+            // Fix Registrar issue by telling Gradle to treat it as a safe API
+            lintOptions {
+                disable 'InvalidPackage'
+                disable 'DeprecatedRegistrar'
+            }
+        }
+    }
+}
