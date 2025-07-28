@@ -27,11 +27,11 @@ class ApiConfig {
   static const bool useRealBackend = true;
   
   // Set to true for local development, false for production
-  static const bool useLocalServer = false;
+  static const bool useLocalServer = true;
   
   // Base URLs
   static const String productionBaseUrl = 'https://lemuru.co.tz/api';
-  static const String localBaseUrl = 'http://10.0.2.2:8000/api'; // Use your IP or 10.0.2.2 for Android emulator
+  static const String localBaseUrl = 'http://192.168.100.62:8001/api'; // Local backend server
   
   // Receipt scraper URL - fallback to direct TRA site if custom scraper fails
   static const String scraperUrl = 'http://50.116.44.162:4000';
