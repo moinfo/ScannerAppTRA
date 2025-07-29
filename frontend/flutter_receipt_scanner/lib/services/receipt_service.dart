@@ -94,7 +94,7 @@ class ReceiptService {
 
       // Make API call with synchronous offlineFallback
       return await _apiService.get<Map<String, dynamic>>(
-        ApiConfig.receiptsUrl,
+        await ApiConfig.receiptsUrl,
         queryParams: queryParams,
         fromJson: (json) => json,
         offlineFallback: () => offlinePaginationResult,  // Now synchronous
@@ -155,7 +155,7 @@ class ReceiptService {
       
       // Make API call to add receipt
       return await _apiService.post<Map<String, dynamic>>(
-        ApiConfig.addReceiptUrl,
+        await ApiConfig.addReceiptUrl,
         body: receiptData,
         fromJson: (json) => json,
       );

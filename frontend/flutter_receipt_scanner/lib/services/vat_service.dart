@@ -286,7 +286,7 @@ class VatService {
 
       // Make API call with synchronous offlineFallback
       final response = await _apiService.get<Map<String, dynamic>>(
-        ApiConfig.reportsUrl + '/vat',
+        '${await ApiConfig.reportsUrl}/vat',
         queryParams: {
           'start_date': startDateStr,
           'end_date': endDateStr,

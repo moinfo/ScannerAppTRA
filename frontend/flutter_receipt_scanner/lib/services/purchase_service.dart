@@ -13,6 +13,31 @@ class Purchase {
   final String status;
   final int? receiptId;
   final List<PurchaseItem>? items;
+  
+  // Detailed receipt fields
+  final String? companyName;
+  final String? poBox;
+  final String? mobile;
+  final String? tin;
+  final String? vrn;
+  final String? serialNo;
+  final String? uin;
+  final String? taxOffice;
+  final String? customerName;
+  final String? customerIdType;
+  final String? customerId;
+  final String? customerMobile;
+  final String? receiptNumber;
+  final String? receiptZNumber;
+  final String? receiptTime;
+  final String? receiptVerificationCode;
+  final double? receiptTotalExclOfTax;
+  final double? receiptTotalTax;
+  final double? receiptTotalDiscount;
+  final String? taxRateA;
+  final double? rea;
+  final double? ewura;
+  final double? propertyTax;
 
   Purchase({
     required this.id,
@@ -22,6 +47,29 @@ class Purchase {
     required this.status,
     this.receiptId,
     this.items,
+    this.companyName,
+    this.poBox,
+    this.mobile,
+    this.tin,
+    this.vrn,
+    this.serialNo,
+    this.uin,
+    this.taxOffice,
+    this.customerName,
+    this.customerIdType,
+    this.customerId,
+    this.customerMobile,
+    this.receiptNumber,
+    this.receiptZNumber,
+    this.receiptTime,
+    this.receiptVerificationCode,
+    this.receiptTotalExclOfTax,
+    this.receiptTotalTax,
+    this.receiptTotalDiscount,
+    this.taxRateA,
+    this.rea,
+    this.ewura,
+    this.propertyTax,
   });
 
   factory Purchase.fromJson(Map<String, dynamic> json) {
@@ -34,12 +82,41 @@ class Purchase {
 
     return Purchase(
       id: json['id'] ?? 0,
-      supplier: json['supplier'] ?? 'Unknown Supplier',
-      date: json['date'] ?? DateFormat('yyyy-MM-dd').format(DateTime.now()),
-      amount: json['amount'] is num ? json['amount'].toDouble() : 0.0,
+      supplier: json['supplier'] ?? json['company_name'] ?? 'Unknown Supplier',
+      date: json['date'] ?? json['receipt_date'] ?? DateFormat('yyyy-MM-dd').format(DateTime.now()),
+      amount: json['amount'] is num ? json['amount'].toDouble() : 
+              (json['receipt_total_incl_of_tax'] is num ? json['receipt_total_incl_of_tax'].toDouble() : 0.0),
       status: json['status'] ?? 'Pending',
       receiptId: json['receipt_id'],
       items: purchaseItems,
+      
+      // Detailed receipt fields
+      companyName: json['company_name'],
+      poBox: json['p_o_box'],
+      mobile: json['mobile'],
+      tin: json['tin'],
+      vrn: json['vrn'],
+      serialNo: json['serial_no'],
+      uin: json['uin'],
+      taxOffice: json['tax_office'],
+      customerName: json['customer_name'],
+      customerIdType: json['customer_id_type'],
+      customerId: json['customer_id'],
+      customerMobile: json['customer_mobile'],
+      receiptNumber: json['receipt_number'],
+      receiptZNumber: json['receipt_z_number'],
+      receiptTime: json['receipt_time'],
+      receiptVerificationCode: json['receipt_verification_code'],
+      receiptTotalExclOfTax: json['receipt_total_excl_of_tax'] is num ? json['receipt_total_excl_of_tax'].toDouble() : null,
+      receiptTotalTax: json['receipt_total_tax'] is num ? json['receipt_total_tax'].toDouble() : null,
+      receiptTotalDiscount: json['receipt_total_discount'] is num ? json['receipt_total_discount'].toDouble() : null,
+      taxRateA: json['tax_rate_a'],
+      rea: json['rea'] is num ? json['rea'].toDouble() : 
+           (json['receipt_rea'] is num ? json['receipt_rea'].toDouble() : null),
+      ewura: json['ewura'] is num ? json['ewura'].toDouble() : 
+             (json['receipt_ewura'] is num ? json['receipt_ewura'].toDouble() : null),
+      propertyTax: json['property_tax'] is num ? json['property_tax'].toDouble() : 
+                   (json['receipt_property_tax'] is num ? json['receipt_property_tax'].toDouble() : null),
     );
   }
 
@@ -52,6 +129,35 @@ class Purchase {
       'status': status,
       'receipt_id': receiptId,
       'items': items?.map((item) => item.toJson()).toList(),
+      
+      // Detailed receipt fields
+      'company_name': companyName,
+      'p_o_box': poBox,
+      'mobile': mobile,
+      'tin': tin,
+      'vrn': vrn,
+      'serial_no': serialNo,
+      'uin': uin,
+      'tax_office': taxOffice,
+      'customer_name': customerName,
+      'customer_id_type': customerIdType,
+      'customer_id': customerId,
+      'customer_mobile': customerMobile,
+      'receipt_number': receiptNumber,
+      'receipt_z_number': receiptZNumber,
+      'receipt_time': receiptTime,
+      'receipt_verification_code': receiptVerificationCode,
+      'receipt_total_excl_of_tax': receiptTotalExclOfTax,
+      'receipt_total_tax': receiptTotalTax,
+      'receipt_total_discount': receiptTotalDiscount,
+      'tax_rate_a': taxRateA,
+      'rea': rea,
+      'ewura': ewura,
+      'property_tax': propertyTax,
+      // Laravel backend expects these field names
+      'receipt_rea': rea,
+      'receipt_ewura': ewura,
+      'receipt_property_tax': propertyTax,
     };
   }
 }
@@ -71,14 +177,16 @@ class PurchaseItem {
 
   factory PurchaseItem.fromJson(Map<String, dynamic> json) {
     return PurchaseItem(
-      name: json['name'] ?? 'Unknown Item',
-      quantity: json['quantity'] ?? 1,
-      price: json['price'] is num ? json['price'].toDouble() : 0.0,
+      name: json['name'] ?? json['description'] ?? json['item_description'] ?? 'Unknown Item',
+      quantity: json['quantity'] ?? json['qty'] ?? json['item_qty'] ?? 1,
+      price: json['price'] is num ? json['price'].toDouble() : 
+             (json['amount'] is num ? json['amount'].toDouble() : 
+             (json['item_amount'] is num ? json['item_amount'].toDouble() : 0.0)),
       vatAmount: json['vat_amount'] is num ? json['vat_amount'].toDouble() : null,
     );
   }
 
-  String get description => '';
+  String get description => name;
 
   Map<String, dynamic> toJson() {
     return {
@@ -155,7 +263,7 @@ class PurchaseService {
 
       // Make API call
       final response = await _apiService.get<Map<String, dynamic>>(
-        ApiConfig.purchasesUrl,
+        await ApiConfig.purchasesUrl,
         queryParams: queryParams,
         fromJson: (json) => json,
         offlineFallback: () => {'data': offlinePurchasesJson},
@@ -249,7 +357,7 @@ class PurchaseService {
       
       // Make API call to create purchase
       final response = await _apiService.post<Map<String, dynamic>>(
-        ApiConfig.purchasesUrl,
+        await ApiConfig.purchasesUrl,
         body: purchase.toJson(),
         fromJson: (json) => json,
       );

@@ -19,40 +19,174 @@ import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:network_info_plus/network_info_plus.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'dart:math' show min;
 
-// API URLs - Change these based on your environment
+// API URLs - Dynamic configuration for live local development
 class ApiConfig {
-  // Set to false for testing without a running backend server
+  // Development settings
   static const bool useRealBackend = true;
-  
-  // Set to true for local development, false for production
   static const bool useLocalServer = true;
+  static const bool autoDetectLocalIP = false; // Temporarily disable auto-detection
   
-  // Base URLs
+  // Production URLs (fallback)
   static const String productionBaseUrl = 'https://lemuru.co.tz/api';
-  static const String localBaseUrl = 'http://192.168.100.62:8001/api'; // Local backend server
   
-  // Receipt scraper URL - fallback to direct TRA site if custom scraper fails
-  static const String scraperUrl = 'http://50.116.44.162:4000';
+  // Local server ports
+  static const int backendPort = 8001;
+  static const int scraperPort = 3000;
+  static const int expressPort = 8000;
+  
+  // Fallback IPs for different network scenarios (prioritized by likelihood)
+  static const List<String> commonLocalIPs = [
+    '192.168.0.60',   // Confirmed working WiFi IP (highest priority)
+    '192.168.0.236',  // Recently detected IP (mobile network?)
+    '192.168.1.1',    // Common router IP range
+    '192.168.0.1',    // Common router IP range
+    '10.0.0.1',       // Another common range
+    '172.16.0.1',     // Corporate network range
+    '127.0.0.1',      // Localhost fallback
+  ];
+  
+  // Cache for detected IP
+  static String? _cachedLocalIP;
+  static DateTime? _lastIPCheck;
+  static const Duration ipCacheTimeout = Duration(minutes: 5);
+  
+  // Get local IP address dynamically
+  static Future<String> getLocalIP() async {
+    // If auto-detection is disabled, use the first working IP from the list
+    if (!autoDetectLocalIP) {
+      for (String ip in commonLocalIPs) {
+        if (await _testConnection(ip, backendPort)) {
+          print('🎯 Using confirmed working IP: $ip');
+          return ip;
+        }
+      }
+      // If no working IP found, return the first one as fallback
+      print('⚠️ No working IP found, using fallback: ${commonLocalIPs.first}');
+      return commonLocalIPs.first;
+    }
+    
+    // Return cached IP if still valid
+    if (_cachedLocalIP != null && 
+        _lastIPCheck != null && 
+        DateTime.now().difference(_lastIPCheck!) < ipCacheTimeout) {
+      return _cachedLocalIP!;
+    }
+    
+    try {
+      // Try to get WiFi IP first
+      final info = NetworkInfo();
+      String? wifiIP = await info.getWifiIP();
+      
+      if (wifiIP != null && wifiIP != '127.0.0.1' && wifiIP.isNotEmpty) {
+        _cachedLocalIP = wifiIP;
+        _lastIPCheck = DateTime.now();
+        print('📡 Detected local IP: $wifiIP');
+        return wifiIP;
+      }
+      
+      // If WiFi IP fails, try connectivity check
+      final connectivity = Connectivity();
+      final connectivityResult = await connectivity.checkConnectivity();
+      
+      if (connectivityResult == ConnectivityResult.wifi) {
+        // Try common IP ranges
+        for (String ip in commonLocalIPs) {
+          if (await _testConnection(ip, backendPort)) {
+            _cachedLocalIP = ip;
+            _lastIPCheck = DateTime.now();
+            print('🔍 Found working IP: $ip');
+            return ip;
+          }
+        }
+      }
+      
+      // Fallback to first common IP if all else fails
+      print('⚠️ Using fallback IP: ${commonLocalIPs.first}');
+      return commonLocalIPs.first;
+      
+    } catch (e) {
+      print('❌ IP Detection Error: $e');
+      return commonLocalIPs.first; // Fallback
+    }
+  }
+  
+  // Test if a server is reachable
+  static Future<bool> _testConnection(String ip, int port) async {
+    try {
+      final client = http.Client();
+      final response = await client.get(
+        Uri.parse('http://$ip:$port'),
+        headers: {'Connection': 'close'},
+      ).timeout(const Duration(seconds: 2));
+      client.close();
+      return response.statusCode == 200 || response.statusCode == 302;
+    } catch (e) {
+      return false;
+    }
+  }
+  
+  // Get base URL dynamically
+  static Future<String> get baseUrl async {
+    if (!useLocalServer) return productionBaseUrl;
+    if (!autoDetectLocalIP) return 'http://${commonLocalIPs.first}:$backendPort/api';
+    
+    final ip = await getLocalIP();
+    return 'http://$ip:$backendPort/api';
+  }
+  
+  // Get scraper URL dynamically
+  static Future<String> get scraperUrl async {
+    if (!autoDetectLocalIP) return 'http://${commonLocalIPs.first}:$scraperPort';
+    
+    final ip = await getLocalIP();
+    return 'http://$ip:$scraperPort';
+  }
+  
+  // Fallback URLs
   static const String alternateScraperUrl = 'https://verify.tra.go.tz';
-  static const bool useDirectScraping = true; // Set to true to use direct TRA site instead of custom scraper
+  static const bool useDirectScraping = false;
   
-  // Get the appropriate scraper URL
-  static String get effectiveScraperUrl => useDirectScraping ? alternateScraperUrl : scraperUrl;
+  // Get effective scraper URL
+  static Future<String> get effectiveScraperUrl async {
+    if (useDirectScraping) return alternateScraperUrl;
+    return await scraperUrl;
+  }
   
-  // Get the appropriate base URL
-  static String get baseUrl => useLocalServer ? localBaseUrl : productionBaseUrl;
-  
-  // API endpoints
-  static String get receiptsUrl => '$baseUrl/receipts';
-  static String get addReceiptUrl => '$baseUrl/add_receipt';
-  static String get loginUrl => '$baseUrl/login';
+  // API endpoints (async versions for dynamic URLs)
+  static Future<String> get receiptsUrl async => '${await baseUrl}/receipts';
+  static Future<String> get addReceiptUrl async => '${await baseUrl}/add_receipt';
+  static Future<String> get loginUrl async => '${await baseUrl}/login';
   
   // New API endpoints
-  static String get salesUrl => '$baseUrl/sales';
-  static String get purchasesUrl => '$baseUrl/purchases';
-  static String get reportsUrl => '$baseUrl/reports';
+  static Future<String> get salesUrl async => '${await baseUrl}/sales';
+  static Future<String> get purchasesUrl async => '${await baseUrl}/purchases';
+  static Future<String> get reportsUrl async => '${await baseUrl}/reports';
+  
+  // Utility methods
+  static Future<void> refreshIP() async {
+    _cachedLocalIP = null;
+    _lastIPCheck = null;
+    await getLocalIP();
+  }
+  
+  static Future<Map<String, dynamic>> getConnectionStatus() async {
+    final ip = await getLocalIP();
+    final backendReachable = await _testConnection(ip, backendPort);
+    final scraperReachable = await _testConnection(ip, scraperPort);
+    
+    return {
+      'localIP': ip,
+      'backendUrl': 'http://$ip:$backendPort',
+      'scraperUrl': 'http://$ip:$scraperPort',
+      'backendReachable': backendReachable,
+      'scraperReachable': scraperReachable,
+      'lastChecked': DateTime.now().toIso8601String(),
+    };
+  }
   
   // Connection timeouts
   static const int connectionTimeout = 15; // in seconds
@@ -1322,7 +1456,14 @@ class _ScanPageState extends State<ScanPage> {
         return;
       }
 
+      print('🚀 [SCAN] Starting receipt scanning process');
+      print('🚀 [SCAN] QR Code: $code, Time: $time');
+      print('🚀 [SCAN] Max retries: $retries');
+
+      final scanStartTime = DateTime.now();
+
       for (int i = 0; i < retries; i++) {
+        _logProcessingStatus('started', attempt: i + 1, totalAttempts: retries);
         try {
           setState(() {
             receiptUrlFound = true;
@@ -1331,8 +1472,10 @@ class _ScanPageState extends State<ScanPage> {
             errMsg = '';
           });
 
-          debugPrint('Attempt ${i + 1} of $retries');
-          debugPrint('Scraping receipt: code=$code, time=$time');
+          print('🔄 [SCAN] === ATTEMPT ${i + 1}/$retries ===');
+          print('🔄 [SCAN] Scraping receipt: code=$code, time=$time');
+          
+          final requestStartTime = DateTime.now();
 
           // Use direct TRA verification website instead of custom scraper
           // This should be more reliable since it goes directly to the source
@@ -1340,7 +1483,7 @@ class _ScanPageState extends State<ScanPage> {
           
           if (ApiConfig.useDirectScraping) {
             // Use the TRA direct verification page
-            final directUrl = '${ApiConfig.effectiveScraperUrl}/${code}_${time}';
+            final directUrl = '${await ApiConfig.effectiveScraperUrl}/${code}_${time}';
             debugPrint('Using direct TRA verification URL: $directUrl');
             
             response = await http.get(
@@ -1365,70 +1508,130 @@ class _ScanPageState extends State<ScanPage> {
               );
             }
           } else {
-            // Try the original scraper as a fallback
-            debugPrint('Using custom scraper: ${ApiConfig.scraperUrl}/receipt/$code/$time');
+            // Try the local scraper service
+            final scraperUrl = await ApiConfig.scraperUrl;
+            debugPrint('Using local scraper: $scraperUrl/receipt/$code/$time');
             response = await http.get(
-              Uri.parse('${ApiConfig.scraperUrl}/receipt/$code/$time'),
+              Uri.parse('$scraperUrl/receipt/$code/$time'),
               headers: {
                 'Accept': 'application/json',
               },
             ).timeout(Duration(seconds: ApiConfig.connectionTimeout));
           }
 
-          debugPrint('Response status: ${response.statusCode}');
+          final requestDuration = DateTime.now().difference(requestStartTime);
+          print('📡 [SCAN] Response received in ${requestDuration.inMilliseconds}ms');
+          print('📡 [SCAN] Response status: ${response.statusCode}');
+          print('📡 [SCAN] Response body length: ${response.body.length} characters');
 
           if (response.statusCode == 200 && response.body.isNotEmpty) {
-            dynamic responseBody = jsonDecode(response.body);
-
-            // Validate required fields
-            if (!validateRequiredFields(responseBody)) {
-              debugPrint('Missing required fields, retrying...');
-              if (i == retries - 1) {
-                setState(() {
-                  receiptUrlFound = false;
-                  errMsg = 'Failed to get complete receipt data';
-                });
-                return;
-              }
+            print('✅ [SCAN] Valid response received, parsing JSON...');
+            
+            dynamic responseBody;
+            try {
+              responseBody = jsonDecode(response.body);
+              print('✅ [SCAN] JSON parsed successfully');
+              print('📋 [SCAN] Response data type: ${responseBody.runtimeType}');
+            } catch (e) {
+              print('❌ [SCAN] JSON parsing error: $e');
+              final truncatedRaw = response.body.length > 200 
+                  ? '${response.body.substring(0, 200)}...' 
+                  : response.body;
+              print('📄 [SCAN] Raw response: $truncatedRaw');
               continue;
             }
 
-            debugPrint('Attempting to upload to Lemuru server...');
+            // Log response data summary
+            if (responseBody is Map<String, dynamic>) {
+              print('📋 [SCAN] Response contains ${responseBody.keys.length} fields');
+              print('📋 [SCAN] Company: ${responseBody['company_name'] ?? 'N/A'}');
+              print('📋 [SCAN] Receipt: ${responseBody['receipt_number'] ?? 'N/A'}');
+              print('📋 [SCAN] Amount: ${responseBody['receipt_total_incl_of_tax'] ?? 'N/A'}');
+            }
+
+            // Validate required fields
+            print('🔍 [SCAN] Starting field validation...');
+            _logProcessingStatus('validating', attempt: i + 1, totalAttempts: retries);
+            if (!validateRequiredFields(responseBody)) {
+              print('❌ [SCAN] Validation failed - retrying attempt ${i + 1}/$retries');
+              if (i == retries - 1) {
+                print('💀 [SCAN] Max retries reached - giving up');
+                _logProcessingStatus('failed', details: 'Field validation failed after $retries attempts', attempt: i + 1, totalAttempts: retries);
+                setState(() {
+                  receiptUrlFound = false;
+                  errMsg = 'Failed to get complete receipt data after $retries attempts';
+                });
+                return;
+              }
+              _logProcessingStatus('retrying', details: 'Field validation failed', attempt: i + 1, totalAttempts: retries);
+              continue;
+            }
+
+            print('✅ [SCAN] Field validation passed!');
+
+            // Upload to server section
+            print('🚀 [SCAN] Starting server upload process...');
+            _logProcessingStatus('uploading', attempt: i + 1, totalAttempts: retries);
+            final uploadStartTime = DateTime.now();
+            final serverUrl = await ApiConfig.addReceiptUrl;
+            print('📡 [SCAN] Target server URL: $serverUrl');
+            print('📦 [SCAN] Payload size: ${jsonEncode(responseBody).length} bytes');
 
             // Second request to Lemuru server with shorter timeout
             http.Response serverResponse;
             try {
+              print('⏳ [SCAN] Sending POST request to server...');
               serverResponse = await http.post(
-                Uri.parse(ApiConfig.addReceiptUrl),
+                Uri.parse(serverUrl),
                 body: jsonEncode(responseBody),
                 headers: {
                   'Accept': 'application/json',
                   'Content-Type': 'application/json',
                 },
               ).timeout(Duration(seconds: ApiConfig.connectionTimeout));
+              
+              final uploadDuration = DateTime.now().difference(uploadStartTime);
+              print('📡 [SCAN] Server response received in ${uploadDuration.inMilliseconds}ms');
+              
             } catch (e) {
               // If the server request fails, create a fallback local response
               // This allows the app to continue working even if the server is down
-              debugPrint('Server request failed, creating local receipt: $e');
+              final uploadDuration = DateTime.now().difference(uploadStartTime);
+              print('❌ [SCAN] Server request failed after ${uploadDuration.inMilliseconds}ms: $e');
+              print('💾 [SCAN] Attempting local storage fallback...');
               
               // Add receipt to local storage instead
               final success = await _addReceiptToLocalStorage(responseBody);
               
               if (success) {
+                print('✅ [SCAN] Receipt saved to local storage successfully');
                 serverResponse = http.Response(
                   jsonEncode({'success': true, 'message': 'Receipt saved locally'}),
                   200,
                   headers: {'content-type': 'application/json'},
                 );
               } else {
+                print('❌ [SCAN] Local storage save failed');
                 throw Exception('Failed to save receipt locally');
               }
             }
 
-          debugPrint('Lemuru server response status: ${serverResponse.statusCode}');
-          debugPrint('Lemuru server response body: ${serverResponse.body}');
+          print('📊 [SCAN] Server response status: ${serverResponse.statusCode}');
+          print('📊 [SCAN] Server response body length: ${serverResponse.body.length} characters');
+          if (serverResponse.body.length < 500) {
+            print('📄 [SCAN] Server response: ${serverResponse.body}');
+          } else {
+            final truncatedServerResponse = serverResponse.body.length > 200 
+                ? '${serverResponse.body.substring(0, 200)}...' 
+                : serverResponse.body;
+            print('📄 [SCAN] Server response (truncated): $truncatedServerResponse');
+          }
 
           if (serverResponse.statusCode == 200) {
+            print('🎉 [SCAN] Receipt processing completed successfully!');
+            print('🎉 [SCAN] Scan attempt ${i + 1} succeeded');
+            _logProcessingStatus('success', attempt: i + 1, totalAttempts: retries);
+            
             setState(() {
               receiptUrlFound = false;
               _code = '';
@@ -1437,42 +1640,67 @@ class _ScanPageState extends State<ScanPage> {
             });
 
             if (mounted) {
+              print('🏠 [SCAN] Navigating back to previous screen');
               Navigator.of(context).pop();
             }
+            
+            final totalProcessingTime = DateTime.now().difference(scanStartTime);
+            print('⏱️ [SCAN] Total processing time: ${totalProcessingTime.inMilliseconds}ms');
+            print('✅ [SCAN] Receipt scan workflow completed successfully!');
+            
+            // Log performance metrics
+            _logPerformanceMetrics(scanStartTime, i + 1, true);
             return;
           } else {
+            print('❌ [SCAN] Server upload failed with status ${serverResponse.statusCode}');
+            print('❌ [SCAN] Server error response: ${serverResponse.body}');
             throw Exception('Failed to upload data to Lemuru servers: ${serverResponse.statusCode} - ${serverResponse.body}');
           }
         } else {
+          print('❌ [SCAN] TRA scrape failed with status ${response.statusCode}');
+          final truncatedBody = response.body.length > 200 
+              ? '${response.body.substring(0, 200)}...' 
+              : response.body;
+          print('❌ [SCAN] TRA error response: $truncatedBody');
           throw Exception('TRA scrape failed: Status ${response.statusCode} - ${response.body}');
         }
       } on TimeoutException catch (e) {
-        debugPrint('Timeout error during attempt ${i + 1}: $e');
+        print('⏰ [SCAN] Timeout error on attempt ${i + 1}/$retries: $e');
         if (i == retries - 1) {
+          print('💀 [SCAN] Max retries reached - timeout failure');
+          _logPerformanceMetrics(scanStartTime, i + 1, false, failureReason: 'Timeout after $retries attempts');
           setState(() {
             receiptUrlFound = false;
             errMsg = 'Request timed out. Please try again.';
           });
           return;
         }
+        print('🔄 [SCAN] Waiting 1 second before retry...');
         // Wait before retrying
         await Future.delayed(const Duration(seconds: 1));
       } on FormatException catch (e) {
-        debugPrint('Format error during attempt ${i + 1}: $e');
+        print('🔧 [SCAN] Format error on attempt ${i + 1}/$retries: $e');
         if (i == retries - 1) {
+          print('💀 [SCAN] Max retries reached - format error');
+          _logPerformanceMetrics(scanStartTime, i + 1, false, failureReason: 'Format error after $retries attempts');
           setState(() {
             receiptUrlFound = false;
             errMsg = 'Invalid data format received. Please try again.';
           });
           return;
         }
+        print('🔄 [SCAN] Waiting 1 second before retry...');
         // Wait before retrying
         await Future.delayed(const Duration(seconds: 1));
       } catch (e, stackTrace) {
-        debugPrint('Error during attempt ${i + 1}: $e');
+        print('💥 [SCAN] Unexpected error on attempt ${i + 1}/$retries: $e');
         debugPrint('Stack trace: $stackTrace');
 
         if (i == retries - 1) {
+          print('💀 [SCAN] Max retries reached - unexpected error');
+          final totalTime = DateTime.now().difference(scanStartTime);
+          print('⏱️ [SCAN] Total failed processing time: ${totalTime.inMilliseconds}ms');
+          _logPerformanceMetrics(scanStartTime, i + 1, false, failureReason: 'Unexpected error: $e');
           setState(() {
             receiptUrlFound = false;
             errMsg = 'Error processing receipt. Please try again.';
@@ -1480,6 +1708,7 @@ class _ScanPageState extends State<ScanPage> {
           return;
         }
 
+        print('🔄 [SCAN] Waiting 1 second before retry...');
         // Wait before retrying
         await Future.delayed(const Duration(seconds: 1));
       }
@@ -1487,6 +1716,7 @@ class _ScanPageState extends State<ScanPage> {
     } finally {
       // Reset scanning flag to allow future scans
       _isScanning = false;
+      print('🏁 [SCAN] Scanning process finalized, flag reset');
     }
   }
 
@@ -1606,8 +1836,14 @@ class _ScanPageState extends State<ScanPage> {
   }
   
   bool validateRequiredFields(Map<String, dynamic> data) {
+    print('🔍 [SCAN] Starting receipt validation...');
+    print('🔍 [SCAN] useDirectScraping: ${ApiConfig.useDirectScraping}');
+    print('🔍 [SCAN] Received data keys: ${data.keys.toList()}');
+    
     // More permissive validation for TRA direct scraping
     if (ApiConfig.useDirectScraping) {
+      print('🔍 [SCAN] Using DIRECT TRA scraping validation');
+      
       // For direct TRA scraping, we have a simplified data structure
       // with fewer required fields
       final basicRequiredFields = [
@@ -1616,17 +1852,29 @@ class _ScanPageState extends State<ScanPage> {
         'receipt_total_incl_of_tax'
       ];
       
+      print('🔍 [SCAN] Checking basic required fields: $basicRequiredFields');
+      
       final missingFields = basicRequiredFields.where((field) =>
         data[field] == null || data[field].toString().isEmpty
       ).toList();
       
+      final presentFields = basicRequiredFields.where((field) =>
+        data[field] != null && data[field].toString().isNotEmpty
+      ).toList();
+      
+      print('🔍 [SCAN] Present fields: $presentFields');
+      
       if (missingFields.isNotEmpty) {
-        debugPrint('Missing basic required fields: $missingFields');
+        print('❌ [SCAN] Missing basic required fields: $missingFields');
+        _logFieldValues(data, basicRequiredFields);
         return false;
       }
       
+      print('✅ [SCAN] All basic required fields present');
       return true;
     }
+    
+    print('🔍 [SCAN] Using CUSTOM scraper validation');
     
     // Original, more strict validation for the custom scraper
     final requiredFields = [
@@ -1638,16 +1886,151 @@ class _ScanPageState extends State<ScanPage> {
       'tax_office'
     ];
 
+    print('🔍 [SCAN] Checking required fields: $requiredFields');
+
     final missingFields = requiredFields.where((field) =>
       data[field] == null || data[field].toString().isEmpty
     ).toList();
 
+    final presentFields = requiredFields.where((field) =>
+      data[field] != null && data[field].toString().isNotEmpty
+    ).toList();
+    
+    print('🔍 [SCAN] Present fields: $presentFields');
+
     if (missingFields.isNotEmpty) {
-      debugPrint('Missing required fields: $missingFields');
+      print('❌ [SCAN] Missing required fields: $missingFields');
+      _logFieldValues(data, requiredFields);
       return false;
     }
 
+    print('✅ [SCAN] All required fields present');
     return true;
+  }
+
+  void _logPerformanceMetrics(DateTime startTime, int attempts, bool success, {String? failureReason}) {
+    final totalDuration = DateTime.now().difference(startTime);
+    final avgTimePerAttempt = attempts > 0 ? totalDuration.inMilliseconds / attempts : 0;
+    
+    print('📊 [SCAN] ========== PERFORMANCE METRICS ==========');
+    print('📊 [SCAN] Total processing time: ${totalDuration.inMilliseconds}ms (${totalDuration.inSeconds}s)');
+    print('📊 [SCAN] Number of attempts: $attempts');
+    print('📊 [SCAN] Average time per attempt: ${avgTimePerAttempt.toStringAsFixed(0)}ms');
+    print('📊 [SCAN] Success rate: ${success ? '100%' : '0%'} (${success ? 'SUCCESS' : 'FAILED'})');
+    
+    if (!success && failureReason != null) {
+      print('📊 [SCAN] Failure reason: $failureReason');
+    }
+    
+    // Performance analysis
+    if (totalDuration.inSeconds > 30) {
+      print('⚠️ [SCAN] SLOW: Processing took over 30 seconds');
+    } else if (totalDuration.inSeconds > 10) {
+      print('⚠️ [SCAN] MODERATE: Processing took over 10 seconds');
+    } else {
+      print('✅ [SCAN] FAST: Processing completed in under 10 seconds');
+    }
+    
+    if (attempts > 1) {
+      print('🔄 [SCAN] Multiple attempts required (${attempts} total)');
+    } else {
+      print('🎯 [SCAN] Single attempt success');
+    }
+    
+    print('📊 [SCAN] =========================================');
+  }
+
+  void _logProcessingStatus(String status, {String? details, int? attempt, int? totalAttempts}) {
+    final timestamp = DateTime.now().toIso8601String().split('T')[1].split('.')[0];
+    final attemptInfo = (attempt != null && totalAttempts != null) 
+        ? ' (Attempt $attempt/$totalAttempts)' 
+        : '';
+    
+    switch (status.toLowerCase()) {
+      case 'started':
+        print('🚀 [SCAN] [$timestamp] Processing STARTED$attemptInfo');
+        break;
+      case 'extracting':
+        print('🔍 [SCAN] [$timestamp] EXTRACTING data from TRA$attemptInfo');
+        break;
+      case 'validating':
+        print('✅ [SCAN] [$timestamp] VALIDATING receipt fields$attemptInfo');
+        break;
+      case 'uploading':
+        print('📤 [SCAN] [$timestamp] UPLOADING to server$attemptInfo');
+        break;
+      case 'success':
+        print('🎉 [SCAN] [$timestamp] Processing COMPLETED successfully$attemptInfo');
+        break;
+      case 'failed':
+        print('❌ [SCAN] [$timestamp] Processing FAILED$attemptInfo');
+        break;
+      case 'retrying':
+        print('🔄 [SCAN] [$timestamp] RETRYING after error$attemptInfo');
+        break;
+      default:
+        print('📋 [SCAN] [$timestamp] Status: ${status.toUpperCase()}$attemptInfo');
+    }
+    
+    if (details != null && details.isNotEmpty) {
+      print('📋 [SCAN] [$timestamp] Details: $details');
+    }
+  }
+
+  void _logFieldValues(Map<String, dynamic> data, List<String> fields) {
+    print('📊 [SCAN] Field values analysis:');
+    print('📊 [SCAN] Total data keys: ${data.keys.length}');
+    print('📊 [SCAN] Required fields: ${fields.length}');
+    
+    // Group fields by status
+    final presentFields = <String>[];
+    final emptyFields = <String>[];
+    final missingFields = <String>[];
+    
+    for (String field in fields) {
+      final value = data[field];
+      final valueType = value.runtimeType;
+      final isEmpty = value == null || value.toString().isEmpty;
+      final displayValue = value?.toString() ?? 'null';
+      final truncatedValue = displayValue.length > 50 
+          ? '${displayValue.substring(0, 50)}...' 
+          : displayValue;
+      
+      // Categorize field status
+      if (value == null) {
+        missingFields.add(field);
+        print('❌ [SCAN]   $field: NULL (missing from response)');
+      } else if (isEmpty) {
+        emptyFields.add(field);
+        print('⚠️ [SCAN]   $field: EMPTY (Type: $valueType, Value: "$truncatedValue")');
+      } else {
+        presentFields.add(field);
+        print('✅ [SCAN]   $field: "$truncatedValue" (Type: $valueType, Length: ${displayValue.length})');
+      }
+    }
+    
+    // Summary
+    print('📊 [SCAN] Field Summary:');
+    print('📊 [SCAN]   ✅ Present: ${presentFields.length} fields - $presentFields');
+    print('📊 [SCAN]   ⚠️ Empty: ${emptyFields.length} fields - $emptyFields');
+    print('📊 [SCAN]   ❌ Missing: ${missingFields.length} fields - $missingFields');
+    
+    // Additional analysis
+    if (data.isNotEmpty) {
+      print('📊 [SCAN] Available data keys: ${data.keys.toList()}');
+      
+      // Look for similar field names
+      for (String missingField in missingFields) {
+        final similarFields = data.keys.where((key) => 
+          key.toLowerCase().contains(missingField.toLowerCase()) ||
+          missingField.toLowerCase().contains(key.toLowerCase())
+        ).toList();
+        
+        if (similarFields.isNotEmpty) {
+          print('💡 [SCAN] Possible alternatives for "$missingField": $similarFields');
+        }
+      }
+    }
   }
 
   @override
@@ -2019,7 +2402,7 @@ class ReceiptProvider extends ChangeNotifier {
       }
       
       // If not in offline mode, proceed with regular API call
-      String url = '${ApiConfig.receiptsUrl}?page=$_currentPage';
+      String url = '${await ApiConfig.receiptsUrl}?page=$_currentPage';
       
       if (startDate != null && endDate != null) {
         final startDateStr = DateFormat('yyyy-MM-dd').format(startDate);
@@ -2123,7 +2506,7 @@ class ReceiptProvider extends ChangeNotifier {
       }
       
       // Build the URL with query parameters for filtering
-      String url = '${ApiConfig.receiptsUrl}?page=${_currentPage + 1}';
+      String url = '${await ApiConfig.receiptsUrl}?page=${_currentPage + 1}';
       
       if (startDate != null && endDate != null) {
         final startDateStr = DateFormat('yyyy-MM-dd').format(startDate);

@@ -280,7 +280,7 @@ class _ScanScreenState extends State<ScanScreen> {
 
         // First request to scraping server
         http.Response response = await http.get(
-          Uri.parse('${ApiConfig.scraperUrl}/receipt/$code/$time'),
+          Uri.parse('${await ApiConfig.scraperUrl}/receipt/$code/$time'),
           headers: {
             'Accept': 'application/json',
           },
@@ -309,7 +309,7 @@ class _ScanScreenState extends State<ScanScreen> {
 
           // Second request to Lemuru server
           http.Response serverResponse = await http.post(
-            Uri.parse(ApiConfig.addReceiptUrl),
+            Uri.parse(await ApiConfig.addReceiptUrl),
             body: jsonEncode(responseBody),
             headers: {
               'Accept': 'application/json',

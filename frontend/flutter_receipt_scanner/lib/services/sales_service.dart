@@ -147,7 +147,7 @@ class SalesService {
 
       // Make API call with synchronous offlineFallback
       final response = await _apiService.get<Map<String, dynamic>>(
-        ApiConfig.salesUrl,
+        await ApiConfig.salesUrl,
         queryParams: queryParams,
         fromJson: (json) => json,
         offlineFallback: () => offlineDataMap,  // Now synchronous
@@ -233,7 +233,7 @@ class SalesService {
       
       // Make API call to create sale
       final response = await _apiService.post<Map<String, dynamic>>(
-        ApiConfig.salesUrl,
+        await ApiConfig.salesUrl,
         body: sale.toJson(),
         fromJson: (json) => json,
       );

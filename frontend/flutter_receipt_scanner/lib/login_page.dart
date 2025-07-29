@@ -22,8 +22,7 @@ class _LoginPageState extends State<LoginPage> {
   String _errorMessage = '';
   bool _shouldBypassLogin = false;
 
-  // Use ApiConfig for URL management
-  final String loginUrl = ApiConfig.loginUrl;
+  // Login URL will be obtained dynamically when needed
 
   @override
   void dispose() {

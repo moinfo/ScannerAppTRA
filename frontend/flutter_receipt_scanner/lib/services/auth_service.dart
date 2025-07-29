@@ -22,7 +22,7 @@ class AuthService {
       }
       
       final response = await _apiService.post<Map<String, dynamic>>(
-        ApiConfig.loginUrl,
+        await ApiConfig.loginUrl,
         body: {
           'email': email,
           'password': password,

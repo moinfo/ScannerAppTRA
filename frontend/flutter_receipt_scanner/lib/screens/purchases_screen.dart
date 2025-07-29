@@ -83,12 +83,12 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
           children: [
             CircleAvatar(
               backgroundColor: Colors.green,
-              child: const Icon(Icons.shopping_bag, color: Colors.white, size: 16),
+              child: const Icon(Icons.receipt, color: Colors.white, size: 16),
             ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Purchase #${purchase.id}',
+                'Receipt #${purchase.receiptNumber ?? purchase.id}',
                 style: const TextStyle(fontSize: 18),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -100,24 +100,44 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildDetailRow('Supplier', purchase.supplier),
-              _buildDetailRow('Date', _dateFormat.format(DateTime.parse(purchase.date))),
-              _buildDetailRow('Amount', _moneyFormat.format(purchase.amount)),
-              _buildDetailRow('Status', purchase.status),
-
-              if (purchase.items != null && purchase.items!.isNotEmpty)
-                _buildDetailRow('Items', '${purchase.items!.length} items'),
-
+              // Company Information Section
+              _buildSectionTitle('Company Information'),
+              _buildDetailRow('Company Name', purchase.companyName ?? purchase.supplier),
+              if (purchase.poBox != null) _buildDetailRow('P.O. Box', purchase.poBox!),
+              if (purchase.mobile != null) _buildDetailRow('Mobile', purchase.mobile!),
+              _buildDetailRow('TIN', purchase.tin ?? 'N/A'),
+              _buildDetailRow('VRN', purchase.vrn ?? 'N/A'),
+              if (purchase.serialNo != null) _buildDetailRow('Serial No', purchase.serialNo!),
+              if (purchase.uin != null) _buildDetailRow('UIN', purchase.uin!),
+              if (purchase.taxOffice != null) _buildDetailRow('Tax Office', purchase.taxOffice!),
+              
               const SizedBox(height: 16),
               const Divider(),
-              const SizedBox(height: 8),
+              
+              // Customer Information Section
+              _buildSectionTitle('Customer Information'),
+              if (purchase.customerName != null) _buildDetailRow('Customer Name', purchase.customerName!),
+              if (purchase.customerIdType != null) _buildDetailRow('ID Type', purchase.customerIdType!),
+              if (purchase.customerId != null) _buildDetailRow('Customer ID', purchase.customerId!),
+              if (purchase.customerMobile != null) _buildDetailRow('Customer Mobile', purchase.customerMobile!),
+              
+              const SizedBox(height: 16),
+              const Divider(),
+              
+              // Receipt Information Section
+              _buildSectionTitle('Receipt Information'),
+              if (purchase.receiptNumber != null) _buildDetailRow('Receipt No', purchase.receiptNumber!),
+              if (purchase.receiptZNumber != null) _buildDetailRow('Z Number', purchase.receiptZNumber!),
+              _buildDetailRow('Date', _dateFormat.format(DateTime.parse(purchase.date))),
+              if (purchase.receiptTime != null) _buildDetailRow('Time', purchase.receiptTime!),
+              if (purchase.receiptVerificationCode != null) _buildDetailRow('Verification Code', purchase.receiptVerificationCode!),
+              
+              const SizedBox(height: 16),
+              const Divider(),
 
               // Items list
               if (purchase.items != null && purchase.items!.isNotEmpty) ...[
-                const Text(
-                  'Items:',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
+                _buildSectionTitle('Purchased Items'),
                 const SizedBox(height: 8),
                 ListView.builder(
                   shrinkWrap: true,
@@ -159,9 +179,38 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                       ),
                     );
                   },
-                )
-              ] else
-                const Text('No item details available'),
+                ),
+                
+                const SizedBox(height: 16),
+                const Divider(),
+              ],
+              
+              // Financial Totals Section
+              _buildSectionTitle('Financial Summary'),
+              if (purchase.receiptTotalExclOfTax != null) 
+                _buildDetailRow('Total Excl. Tax', _moneyFormat.format(purchase.receiptTotalExclOfTax!)),
+              if (purchase.receiptTotalTax != null) 
+                _buildDetailRow('Total Tax', _moneyFormat.format(purchase.receiptTotalTax!)),
+              if (purchase.receiptTotalDiscount != null && purchase.receiptTotalDiscount! > 0) 
+                _buildDetailRow('Total Discount', _moneyFormat.format(purchase.receiptTotalDiscount!)),
+              _buildDetailRow('Total Amount', _moneyFormat.format(purchase.amount), isTotal: true),
+              
+              // Additional Tax Details (for TANESCO receipts) - Debug version
+              const SizedBox(height: 8),
+              const Divider(),
+              _buildSectionTitle('Additional Charges (Debug)'),
+              _buildDetailRow('REA', purchase.rea != null ? _moneyFormat.format(purchase.rea!) : 'NULL'),
+              _buildDetailRow('EWURA', purchase.ewura != null ? _moneyFormat.format(purchase.ewura!) : 'NULL'),
+              _buildDetailRow('Property Tax', purchase.propertyTax != null ? _moneyFormat.format(purchase.propertyTax!) : 'NULL'),
+              
+              // Debug info
+              _buildDetailRow('REA Debug', 'Value: ${purchase.rea}, IsNull: ${purchase.rea == null}, IsZero: ${purchase.rea == 0}'),
+              _buildDetailRow('EWURA Debug', 'Value: ${purchase.ewura}, IsNull: ${purchase.ewura == null}, IsZero: ${purchase.ewura == 0}'),
+              
+              // Status
+              const SizedBox(height: 16),
+              const Divider(),
+              _buildDetailRow('Status', purchase.status),
             ],
           ),
         ),
@@ -182,7 +231,21 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+          color: Colors.green,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value, {bool isTotal = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
@@ -190,12 +253,20 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
         children: [
           Text(
             '$label: ',
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
+            style: TextStyle(
+              fontWeight: isTotal ? FontWeight.bold : FontWeight.w500,
+              fontSize: isTotal ? 16 : 14,
             ),
           ),
           Expanded(
-            child: Text(value),
+            child: Text(
+              value,
+              style: TextStyle(
+                fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+                fontSize: isTotal ? 16 : 14,
+                color: isTotal ? Colors.green : null,
+              ),
+            ),
           ),
         ],
       ),
