@@ -40,6 +40,7 @@ class ApiConfig {
   
   // Fallback IPs for different network scenarios (prioritized by likelihood)
   static const List<String> commonLocalIPs = [
+    '192.168.139.133',   // Confirmed working WiFi IP (highest priority)
     '192.168.0.60',   // Confirmed working WiFi IP (highest priority)
     '192.168.0.236',  // Recently detected IP (mobile network?)
     '192.168.1.1',    // Common router IP range
