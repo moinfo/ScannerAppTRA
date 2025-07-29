@@ -6,8 +6,8 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 class ApiConfig {
   // Development settings
   static const bool useRealBackend = true;
-  static const bool useLocalServer = true;
-  static const bool autoDetectLocalIP = false; // Temporarily disable auto-detection
+  static const bool useLocalServer = false; // Changed to false for production
+  static const bool autoDetectLocalIP = false; // Disabled for production
   
   // Production URLs (fallback)
   static const String productionBaseUrl = 'https://lemuru.co.tz/api';
@@ -120,6 +120,7 @@ class ApiConfig {
   
   // Get scraper URL dynamically
   static Future<String> get scraperUrl async {
+    if (!useLocalServer) return 'http://50.116.44.162:4000';
     if (!autoDetectLocalIP) return 'http://${commonLocalIPs.first}:$scraperPort';
     
     final ip = await getLocalIP();
