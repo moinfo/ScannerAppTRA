@@ -234,11 +234,13 @@ class _HomeScreenState extends State<HomeScreen> {
         onRefresh: () async {
           await _loadData();
         },
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
               // Welcome message with connectivity indicator
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -286,8 +288,8 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 24),
               
               // Summary cards
-              Expanded(
-                flex: 7,
+              SizedBox(
+                height: 300,
                 child: GridView.count(
                   physics: const NeverScrollableScrollPhysics(),
                   crossAxisCount: 2,
@@ -351,8 +353,8 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 0),
               
               // Recent transactions list
-              Expanded(
-                flex: 5,
+              SizedBox(
+                height: 400,
                 child: _isLoadingTransactions
                     ? const Center(child: CircularProgressIndicator())
                     : _recentTransactions.isEmpty
@@ -422,6 +424,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
               ),
             ],
+            ),
           ),
         ),
       );

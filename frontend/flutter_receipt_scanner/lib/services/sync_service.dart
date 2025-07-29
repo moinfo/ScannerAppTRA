@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_receipt_scanner/services/database_service.dart';
 import 'package:flutter_receipt_scanner/services/api_service.dart';
-import 'package:flutter_receipt_scanner/main.dart';
+import 'package:flutter_receipt_scanner/config/api_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum SyncStatus {

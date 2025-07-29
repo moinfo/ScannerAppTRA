@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_receipt_scanner/main.dart';
+import 'package:flutter_receipt_scanner/config/api_config.dart';
 import 'package:flutter_receipt_scanner/services/api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
@@ -126,7 +126,7 @@ class ReceiptService {
 
       // Make API call with synchronous offlineFallback
       return await _apiService.get<Map<String, dynamic>>(
-        '${ApiConfig.receiptsUrl}/$receiptId',
+        '${await ApiConfig.receiptsUrl}/$receiptId',
         fromJson: (json) => json,
         offlineFallback: offlineReceipt != null
             ? () => offlineReceipt  // Synchronous function
@@ -184,7 +184,7 @@ class ReceiptService {
       
       // Make API call to delete receipt
       return await _apiService.delete(
-        '${ApiConfig.receiptsUrl}/$receiptId',
+        '${await ApiConfig.receiptsUrl}/$receiptId',
       );
     } catch (e) {
       debugPrint('Error in deleteReceipt: $e');

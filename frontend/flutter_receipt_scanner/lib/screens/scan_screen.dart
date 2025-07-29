@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_receipt_scanner/main.dart';
+import 'package:flutter_receipt_scanner/config/api_config.dart';
+import 'package:flutter_receipt_scanner/providers/receipt_provider.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
@@ -61,73 +62,118 @@ class _ScanScreenState extends State<ScanScreen> {
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context).size;
     
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Scan Receipt'),
-        automaticallyImplyLeading: false,
-        actions: [
-          IconButton(
-            icon: ValueListenableBuilder(
-              valueListenable: controller.torchState,
-              builder: (context, state, child) {
-                switch (state as TorchState) {
-                  case TorchState.off:
-                    return const Icon(Icons.flash_off, color: Colors.grey);
-                  case TorchState.on:
-                    return const Icon(Icons.flash_on, color: Colors.yellow);
-                }
-              },
-            ),
-            onPressed: () => controller.toggleTorch(),
-          ),
-          IconButton(
-            icon: ValueListenableBuilder(
-              valueListenable: controller.cameraFacingState,
-              builder: (context, state, child) {
-                switch (state as CameraFacing) {
-                  case CameraFacing.front:
-                    return const Icon(Icons.camera_front);
-                  case CameraFacing.back:
-                    return const Icon(Icons.camera_rear);
-                }
-              },
-            ),
-            onPressed: () => controller.switchCamera(),
-          ),
-        ],
-      ),
-      body: Stack(
+    return Stack(
         children: [
           // QR scanner
           _buildQrView(context),
           
-          // Overlay instructions
+          // Camera controls positioned at top right
           Positioned(
             top: 20,
-            left: 0,
-            right: 0,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              margin: const EdgeInsets.symmetric(horizontal: 24),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.6),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Column(
-                children: [
-                  Text(
-                    'Scan TRA Receipt QR Code',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
+            right: 20,
+            child: Column(
+              children: [
+                // Torch control
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.6),
+                    borderRadius: BorderRadius.circular(50),
                   ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Position the QR code within the frame to scan',
-                    style: TextStyle(color: Colors.white70),
+                  child: IconButton(
+                    icon: ValueListenableBuilder(
+                      valueListenable: controller.torchState,
+                      builder: (context, state, child) {
+                        switch (state as TorchState) {
+                          case TorchState.off:
+                            return const Icon(Icons.flash_off, color: Colors.white);
+                          case TorchState.on:
+                            return const Icon(Icons.flash_on, color: Colors.yellow);
+                        }
+                      },
+                    ),
+                    onPressed: () => controller.toggleTorch(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // Camera switch control
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.6),
+                    borderRadius: BorderRadius.circular(50),
+                  ),
+                  child: IconButton(
+                    icon: ValueListenableBuilder(
+                      valueListenable: controller.cameraFacingState,
+                      builder: (context, state, child) {
+                        switch (state as CameraFacing) {
+                          case CameraFacing.front:
+                            return const Icon(Icons.camera_front, color: Colors.white);
+                          case CameraFacing.back:
+                            return const Icon(Icons.camera_rear, color: Colors.white);
+                        }
+                      },
+                    ),
+                    onPressed: () => controller.switchCamera(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Overlay instructions with enhanced styling
+          Positioned(
+            top: 20,
+            left: 20,
+            right: 100, // Leave space for camera controls
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.black.withOpacity(0.8),
+                    Colors.black.withOpacity(0.6),
+                  ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.qr_code_scanner,
+                        color: Colors.blue.shade300,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'QR Code Scanner',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Position the TRA receipt QR code within the frame',
+                    style: TextStyle(
+                      color: Colors.white70, 
+                      fontSize: 13,
+                      height: 1.3,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -135,17 +181,114 @@ class _ScanScreenState extends State<ScanScreen> {
             ),
           ),
           
-          // Frame indicator
+          // Enhanced frame indicator with corners
           Center(
-            child: Container(
-              width: 250,
-              height: 250,
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: Colors.white,
-                  width: 2.0,
-                ),
-                borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              width: 280,
+              height: 280,
+              child: Stack(
+                children: [
+                  // Corner indicators (top-left)
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    child: Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        border: const Border(
+                          top: BorderSide(color: Colors.white, width: 4),
+                          left: BorderSide(color: Colors.white, width: 4),
+                        ),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(12),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 4,
+                            offset: const Offset(1, 1),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Corner indicators (top-right)
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        border: const Border(
+                          top: BorderSide(color: Colors.white, width: 4),
+                          right: BorderSide(color: Colors.white, width: 4),
+                        ),
+                        borderRadius: const BorderRadius.only(
+                          topRight: Radius.circular(12),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 4,
+                            offset: const Offset(-1, 1),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Corner indicators (bottom-left)
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    child: Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        border: const Border(
+                          bottom: BorderSide(color: Colors.white, width: 4),
+                          left: BorderSide(color: Colors.white, width: 4),
+                        ),
+                        borderRadius: const BorderRadius.only(
+                          bottomLeft: Radius.circular(12),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 4,
+                            offset: const Offset(1, -1),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Corner indicators (bottom-right)
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        border: const Border(
+                          bottom: BorderSide(color: Colors.white, width: 4),
+                          right: BorderSide(color: Colors.white, width: 4),
+                        ),
+                        borderRadius: const BorderRadius.only(
+                          bottomRight: Radius.circular(12),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 4,
+                            offset: const Offset(-1, -1),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -214,8 +357,7 @@ class _ScanScreenState extends State<ScanScreen> {
             )
             : const SizedBox(),
         ],
-      ),
-    );
+      );
   }
 
   Widget _buildQrView(BuildContext context) {

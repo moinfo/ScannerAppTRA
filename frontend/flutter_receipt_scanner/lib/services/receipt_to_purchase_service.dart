@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_receipt_scanner/config/api_config.dart';
 import 'package:flutter_receipt_scanner/main.dart';
 import 'package:flutter_receipt_scanner/services/api_service.dart';
 import 'package:flutter_receipt_scanner/services/purchase_service.dart';

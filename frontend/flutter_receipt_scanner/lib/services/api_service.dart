@@ -5,7 +5,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_receipt_scanner/main.dart';
+import 'package:flutter_receipt_scanner/config/api_config.dart';
 
 class ApiResponse<T> {
   final T? data;

@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_receipt_scanner/main.dart';
+import 'package:flutter_receipt_scanner/config/api_config.dart';
 import 'package:flutter_receipt_scanner/services/api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter_receipt_scanner/main.dart';
+import 'package:flutter_receipt_scanner/config/api_config.dart';
 import 'package:flutter_receipt_scanner/services/api_service.dart';
 import 'package:flutter_receipt_scanner/services/sales_service.dart';
 import 'package:intl/intl.dart';

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_receipt_scanner/config/api_config.dart';
 import 'package:flutter_receipt_scanner/dashboard.dart';
 import 'package:flutter_receipt_scanner/main.dart';
 import 'package:flutter_receipt_scanner/providers/app_state_provider.dart';
@@ -310,12 +311,6 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                     ),
                     const SizedBox(height: 16),
-                    
-                    // Test login bypass button (always visible now due to server issues)
-                    TextButton(
-                      onPressed: _isLoading ? null : _bypassLogin,
-                      child: const Text('Enter App (Server Unavailable)'),
-                    ),
                   ],
                 ),
               ),
