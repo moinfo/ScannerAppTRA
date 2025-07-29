@@ -163,25 +163,107 @@ const scrapeTra = async (code, time) => {
         function extractPurchasedItems(text) {
             const items = [];
             
-            // Extract items between "Purchased Items" and "Invoice Adjustments"
-            const itemsMatch = text.match(/Purchased Items[\s\S]*?Description\s+Qty\s+Amount([\s\S]*?)(?:Invoice Adjustments|Invoice Payments|TOTAL EXCL OF TAX|$)/);
+            // Extract items between "Purchased Items" and various end markers
+            const itemsMatch = text.match(/Purchased Items[\s\S]*?Description\s+Qty\s+Amount([\s\S]*?)(?:Invoice Adjustments|Invoice Payments|TOTAL EXCL OF TAX|TOTAL TAX|$)/);
             
             if (itemsMatch) {
                 const itemsText = itemsMatch[1];
-                // Match each item line: Description followed by Qty and Amount
-                const itemRegex = /(.+?):\s+(\d+)\s+([\d,]+\.?\d*)/g;
-                let match;
+                console.log('Items text to parse:', JSON.stringify(itemsText));
                 
-                while ((match = itemRegex.exec(itemsText)) !== null) {
-                    items.push({
-                        description: match[1].trim(),
-                        qty: parseInt(match[2]),
-                        amount: parseFloat(match[3].replace(/,/g, ''))
-                    });
+                // Split into lines and process each line
+                const lines = itemsText.split('\n');
+                
+                for (const line of lines) {
+                    const trimmedLine = line.trim();
+                    if (!trimmedLine || trimmedLine.length < 3) continue;
+                    
+                    // Skip obvious non-item lines
+                    if (trimmedLine.toLowerCase().includes('description') || 
+                        trimmedLine.toLowerCase().includes('total') ||
+                        trimmedLine.match(/^[\s\-=]+$/)) {
+                        continue;
+                    }
+                    
+                    let match = null;
+                    let description, qty, amount;
+                    
+                    // Try multiple patterns to handle different receipt formats:
+                    
+                    // Pattern 1: "Description: Qty Amount" (TANESCO utility format)
+                    match = trimmedLine.match(/^(.+?):\s+(\d+)\s+([\d,]+\.?\d*)$/);
+                    if (match) {
+                        description = match[1].trim();
+                        qty = parseInt(match[2]);
+                        amount = parseFloat(match[3].replace(/,/g, ''));
+                    }
+                    
+                    // Pattern 2: "Description    Qty    Amount" (standard business format with spaces)
+                    if (!match) {
+                        match = trimmedLine.match(/^(.+?)\s+(\d+)\s+([\d,]+\.?\d*)$/);
+                        if (match) {
+                            description = match[1].trim();
+                            qty = parseInt(match[2]);
+                            amount = parseFloat(match[3].replace(/,/g, ''));
+                        }
+                    }
+                    
+                    // Pattern 3: "Description\tQty\tAmount" (tab-separated)
+                    if (!match) {
+                        match = trimmedLine.match(/^(.+?)\t+(\d+)\t+([\d,]+\.?\d*)$/);
+                        if (match) {
+                            description = match[1].trim();
+                            qty = parseInt(match[2]);
+                            amount = parseFloat(match[3].replace(/,/g, ''));
+                        }
+                    }
+                    
+                    // Pattern 4: "Description|Qty|Amount" (pipe-separated)
+                    if (!match) {
+                        match = trimmedLine.match(/^(.+?)\|+(\d+)\|+([\d,]+\.?\d*)$/);
+                        if (match) {
+                            description = match[1].trim();
+                            qty = parseInt(match[2]);
+                            amount = parseFloat(match[3].replace(/,/g, ''));
+                        }
+                    }
+                    
+                    // Pattern 5: Handle lines where amount might have currency or other text
+                    if (!match) {
+                        // Look for any line that has: text, number, number (with potential formatting)
+                        match = trimmedLine.match(/^(.+?)\s+(\d+)\s+.*?([\d,]+\.?\d+)/);
+                        if (match) {
+                            description = match[1].trim();
+                            qty = parseInt(match[2]);
+                            amount = parseFloat(match[3].replace(/,/g, ''));
+                        }
+                    }
+                    
+                    // If we found a match, validate and add it
+                    if (match && description && !isNaN(qty) && !isNaN(amount)) {
+                        // Additional validation
+                        if (description.length > 1 && 
+                            qty > 0 && 
+                            amount >= 0 &&
+                            !description.toLowerCase().match(/^(qty|amount|total|tax|description)$/)) {
+                            
+                            items.push({
+                                description: description,
+                                qty: qty,
+                                amount: amount
+                            });
+                            
+                            console.log(`✅ Extracted item: "${description}" | Qty: ${qty} | Amount: ${amount}`);
+                        }
+                    } else {
+                        console.log(`❌ Could not parse line: "${trimmedLine}"`);
+                    }
                 }
+            } else {
+                console.log('❌ No "Purchased Items" section found in receipt');
             }
             
-            console.log('Extracted items:', items);
+            console.log(`📦 Total items extracted: ${items.length}`);
+            console.log('Final items array:', JSON.stringify(items, null, 2));
             return items;
         }
         
