@@ -131,11 +131,11 @@ const scrapeTra = async (code, time) => {
             data.receipt_total_tax = parseFloat((extractField(text, /TOTAL TAX:\s*([\d,]+\.?\d*)/)||'0').replace(/,/g, ''));
             data.receipt_total_incl_of_tax = parseFloat((extractField(text, /TOTAL INCL OF TAX:\s*([\d,]+\.?\d*)/)||'0').replace(/,/g, ''));
             
-            // Extract additional tax details
+            // Extract additional tax details (using backend-expected field names)
             data.tax_rate_a = extractField(text, /TAX RATE A \((\d+%)\)/);
-            data.rea = parseFloat((extractField(text, /REA:\s*([\d,]+\.?\d*)/)||'0').replace(/,/g, ''));
-            data.ewura = parseFloat((extractField(text, /EWURA:\s*([\d,]+\.?\d*)/)||'0').replace(/,/g, ''));
-            data.property_tax = parseFloat((extractField(text, /PROPERTY TAX:\s*([\d,]+\.?\d*)/)||'0').replace(/,/g, ''));
+            data.receipt_rea = parseFloat((extractField(text, /REA:\s*([\d,]+\.?\d*)/)||'0').replace(/,/g, ''));
+            data.receipt_ewura = parseFloat((extractField(text, /EWURA:\s*([\d,]+\.?\d*)/)||'0').replace(/,/g, ''));
+            data.receipt_property_tax = parseFloat((extractField(text, /PROPERTY TAX:\s*([\d,]+\.?\d*)/)||'0').replace(/,/g, ''));
             
             // Extract purchased items
             data.items = extractPurchasedItems(text);
