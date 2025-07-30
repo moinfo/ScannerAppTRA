@@ -40,6 +40,6 @@ app.get('/receipt/:code/:time', (req, res) => {
         })
 })
 
-app.listen(process.env.PORT || 3000, '0.0.0.0', () => {
-    console.log('server running on all interfaces');
+app.listen(process.env.PORT || 4000, '0.0.0.0', () => {
+    console.log('server running on all interfaces on port', process.env.PORT || 4000);
 })
