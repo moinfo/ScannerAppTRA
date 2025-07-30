@@ -16,7 +16,8 @@
   "repository": "https://github.com/gordonnchy/node-tra-crawler.git",
   "dependencies": {
     "express": "^4.18.2",
-    "puppeteer": "^19.2.2"
+    "puppeteer": "^24.15.0",
+    "puppeteer-core": "^24.15.0"
   },
   "engines": {
     "node": "16.x"
