@@ -609,7 +609,11 @@ class _ProfilePageState extends State<ProfilePage> {
       }
     }
 
-    await prefs.clear();
+    // Clear auth data but preserve user preferences (biometric, theme, locale)
+    await prefs.remove('token');
+    await prefs.remove('isLoggedIn');
+    await prefs.remove('user');
+    await prefs.remove('offline_receipts');
 
     if (!context.mounted) return;
 
