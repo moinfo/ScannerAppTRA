@@ -82,17 +82,55 @@ class _LoginPageState extends State<LoginPage> {
 
       if (!didAuth || !mounted) return;
 
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MainShell()),
-      );
+      // Validate stored token with the server
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      if (token == null || token.isEmpty) {
+        if (!mounted) return;
+        setState(() {
+          _errorMessage = L.tr(context, 'biometric_login_first');
+        });
+        return;
+      }
+
+      setState(() => _isLoading = true);
+
+      final response = await http.get(
+        Uri.parse(ApiConfig.validateTokenUrl),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        // Token is valid — update user data if needed
+        final data = jsonDecode(response.body);
+        if (data['user'] != null) {
+          await prefs.setString('user', jsonEncode(data['user']));
+        }
+
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const MainShell()),
+        );
+      } else {
+        // Token expired or invalid — clear it and ask for password
+        await prefs.remove('token');
+        await prefs.setBool('isLoggedIn', false);
+        setState(() {
+          _isLoading = false;
+          _errorMessage = L.tr(context, 'session_expired');
+        });
+      }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(L.tr(context, 'biometric_failed')),
-          backgroundColor: Colors.red,
-        ),
-      );
+      setState(() {
+        _isLoading = false;
+        _errorMessage = L.tr(context, 'biometric_failed');
+      });
     }
   }
 

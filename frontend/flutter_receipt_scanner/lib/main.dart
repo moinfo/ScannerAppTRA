@@ -35,6 +35,7 @@ class ApiConfig {
   static String get addReceiptUrl => '$baseUrl/add_receipt';
   static String get loginUrl => '$baseUrl/login';
   static String get dashboardUrl => '$baseUrl/dashboard';
+  static String get validateTokenUrl => '$baseUrl/validate-token';
 }
 
 void main() async {
@@ -1629,6 +1630,10 @@ class _ScanPageState extends State<ScanPage> {
 
           print('Attempting to upload to Lemuru server...');
 
+          // Get auth token for protected API
+          final prefs = await SharedPreferences.getInstance();
+          final token = prefs.getString('token') ?? '';
+
           // Second request to Lemuru server
           http.Response serverResponse = await http.post(
             Uri.parse(ApiConfig.addReceiptUrl),
@@ -1636,6 +1641,7 @@ class _ScanPageState extends State<ScanPage> {
             headers: {
               'Accept': 'application/json',
               'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
             },
           ).timeout(const Duration(seconds: 30));
 

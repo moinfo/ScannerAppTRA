@@ -67,6 +67,14 @@ class L {
       'en': 'Biometric authentication failed',
       'sw': 'Uthibitishaji wa kibayolojia umeshindikana',
     },
+    'biometric_login_first': {
+      'en': 'Please login with email & password first',
+      'sw': 'Tafadhali ingia kwa barua pepe na nywila kwanza',
+    },
+    'session_expired': {
+      'en': 'Session expired. Please login again',
+      'sw': 'Muda wa kipindi umekwisha. Tafadhali ingia tena',
+    },
     'login_success': {
       'en': 'Login successful!',
       'sw': 'Umefanikiwa kuingia!',
