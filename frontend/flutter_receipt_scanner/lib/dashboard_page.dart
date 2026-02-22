@@ -71,7 +71,7 @@ class DashboardPage extends StatelessWidget {
         return RefreshIndicator(
           onRefresh: () => provider.fetchDashboard(),
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+            padding: const EdgeInsets.fromLTRB(16, 40, 16, 24),
             children: [
               // Orbital stats layout
               if (isLoading)

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:local_auth/local_auth.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -340,7 +341,7 @@ class _MainShellState extends State<MainShell> {
 
 // ─── Profile Page ────────────────────────────────────────────────────────────
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({
     super.key,
     required this.userName,
@@ -352,13 +353,65 @@ class ProfilePage extends StatelessWidget {
   final String userEmail;
   final bool isOfflineMode;
 
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
   static const Color _primaryColor = Color(0xFF1565C0);
+  final LocalAuthentication _localAuth = LocalAuthentication();
+  bool _biometricEnabled = true;
+  bool _deviceSupportsBiometric = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBiometricInfo();
+  }
+
+  Future<void> _loadBiometricInfo() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // Check device capability
+    bool canCheck = false;
+    try {
+      canCheck = await _localAuth.canCheckBiometrics ||
+          await _localAuth.isDeviceSupported();
+    } catch (_) {}
+
+    if (!mounted) return;
+    setState(() {
+      _biometricEnabled = prefs.getBool('biometricEnabled') ?? true;
+      _deviceSupportsBiometric = canCheck;
+    });
+  }
+
+  Future<void> _toggleBiometric(bool value) async {
+    // Require fingerprint verification before changing
+    try {
+      final didAuth = await _localAuth.authenticate(
+        localizedReason: L.tr(context, 'biometric_reason'),
+        options: const AuthenticationOptions(
+          stickyAuth: true,
+          biometricOnly: true,
+        ),
+      );
+      if (!didAuth || !mounted) return;
+    } catch (_) {
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('biometricEnabled', value);
+    if (!mounted) return;
+    setState(() => _biometricEnabled = value);
+  }
 
   @override
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
     final isDark = appState.themeMode == ThemeMode.dark;
-    final initial = userName.isNotEmpty ? userName[0].toUpperCase() : '?';
+    final initial = widget.userName.isNotEmpty ? widget.userName[0].toUpperCase() : '?';
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
@@ -386,15 +439,15 @@ class ProfilePage extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  userName,
+                  widget.userName,
                   style: const TextStyle(
                       fontSize: 18, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  isOfflineMode
+                  widget.isOfflineMode
                       ? L.tr(context, 'offline_mode')
-                      : userEmail,
+                      : widget.userEmail,
                   style: TextStyle(
                     fontSize: 13,
                     color: Colors.grey.shade600,
@@ -423,6 +476,21 @@ class ProfilePage extends StatelessWidget {
         ),
 
         const SizedBox(height: 8),
+
+        // Biometric login toggle (only if device supports it)
+        if (_deviceSupportsBiometric) ...[
+          Card(
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: SwitchListTile(
+              secondary: const Icon(Icons.fingerprint, color: _primaryColor),
+              title: Text(L.tr(context, 'profile_biometric')),
+              value: _biometricEnabled,
+              onChanged: _toggleBiometric,
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
 
         // Language selector
         Card(
@@ -462,7 +530,7 @@ class ProfilePage extends StatelessWidget {
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
-            onPressed: () => _logout(context),
+            onPressed: () => _doLogout(context),
             icon: const Icon(Icons.logout),
             label: Text(L.tr(context, 'logout')),
             style: ElevatedButton.styleFrom(
@@ -497,7 +565,7 @@ class ProfilePage extends StatelessWidget {
     );
   }
 
-  Future<void> _logout(BuildContext context) async {
+  Future<void> _doLogout(BuildContext context) async {
     final shouldLogout = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(

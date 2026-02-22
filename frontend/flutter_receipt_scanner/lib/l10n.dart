@@ -398,6 +398,11 @@ class L {
       'sw': 'Kuhusu',
     },
 
+    'profile_biometric': {
+      'en': 'Biometric Login',
+      'sw': 'Ingia kwa Alama',
+    },
+
     // ── Dashboard date range ───────────────────────────────────────────
     'this_month': {
       'en': 'This Month',

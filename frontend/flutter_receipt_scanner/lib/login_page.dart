@@ -26,9 +26,34 @@ class _LoginPageState extends State<LoginPage> {
   bool _isLoading = false;
   String _errorMessage = '';
   bool _obscurePassword = true;
+  bool _biometricAvailable = false;
 
   final String loginUrl = '${ApiConfig.baseUrl}/login';
   final LocalAuthentication _localAuth = LocalAuthentication();
+
+  @override
+  void initState() {
+    super.initState();
+    _checkBiometric();
+  }
+
+  Future<void> _checkBiometric() async {
+    final prefs = await SharedPreferences.getInstance();
+    final enabled = prefs.getBool('biometricEnabled') ?? true;
+    if (!enabled) return;
+
+    // Check device capability
+    bool canCheck = false;
+    try {
+      canCheck = await _localAuth.canCheckBiometrics ||
+          await _localAuth.isDeviceSupported();
+    } catch (_) {}
+
+    if (!mounted) return;
+    setState(() {
+      _biometricAvailable = enabled && canCheck;
+    });
+  }
 
   static const Color _brandBlue = Color(0xFF1565C0);
   static const Color _brandLight = Color(0xFF1E88E5);
@@ -430,7 +455,7 @@ class _LoginPageState extends State<LoginPage> {
                         ),
 
                         // ── Biometric button ─────────────────────
-                        ...[
+                        if (_biometricAvailable) ...[
                           const SizedBox(height: 24),
                           Column(
                             children: [

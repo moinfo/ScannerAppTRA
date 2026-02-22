@@ -244,16 +244,22 @@ class ReceiptCard extends StatelessWidget {
                         children: [
                           Icon(Icons.calendar_today, size: 12, color: metaColor),
                           const SizedBox(width: 3),
-                          Text(
-                            receipt.date ?? '',
-                            style: TextStyle(fontSize: 11, color: metaColor),
+                          Flexible(
+                            child: Text(
+                              receipt.date ?? '',
+                              style: TextStyle(fontSize: 11, color: metaColor),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                           const SizedBox(width: 10),
                           Icon(Icons.access_time, size: 12, color: metaColor),
                           const SizedBox(width: 3),
-                          Text(
-                            receipt.time ?? '',
-                            style: TextStyle(fontSize: 11, color: metaColor),
+                          Flexible(
+                            child: Text(
+                              receipt.time ?? '',
+                              style: TextStyle(fontSize: 11, color: metaColor),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ],
                       ),
@@ -722,14 +728,28 @@ class ReceiptDetailPage extends StatelessWidget {
   final Receipt receipt;
   final moneyFormat = NumberFormat.currency(name: '', decimalDigits: 2);
 
-  // ── Color palette ──────────────────────────────────────────────────
+  // ── Color palette (theme-aware) ────────────────────────────────────
   static const Color _primaryColor = Color(0xFF1565C0);
-  static const Color _subtleGray = Color(0xFF757575);
-  static const Color _lightBg = Color(0xFFF5F5F5);
-  static const Color _dividerColor = Color(0xFFBDBDBD);
-  static const Color _zebraStripe = Color(0xFFF9F9F9);
 
-  // ── Text styles ────────────────────────────────────────────────────
+  static bool _isDark(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark;
+
+  static Color _subtleGray(BuildContext context) =>
+      _isDark(context) ? const Color(0xFFB0B0B0) : const Color(0xFF757575);
+
+  static Color _lightBg(BuildContext context) =>
+      _isDark(context) ? const Color(0xFF2A2A2A) : const Color(0xFFF5F5F5);
+
+  static Color _dividerColor(BuildContext context) =>
+      _isDark(context) ? const Color(0xFF555555) : const Color(0xFFBDBDBD);
+
+  static Color _zebraStripe(BuildContext context) =>
+      _isDark(context) ? const Color(0xFF252525) : const Color(0xFFF9F9F9);
+
+  static Color _rowBg(BuildContext context) =>
+      _isDark(context) ? const Color(0xFF1E1E1E) : Colors.white;
+
+  // ── Text styles (theme-aware) ─────────────────────────────────────
   static const TextStyle _companyNameStyle = TextStyle(
     fontSize: 18,
     fontWeight: FontWeight.bold,
@@ -740,28 +760,28 @@ class ReceiptDetailPage extends StatelessWidget {
     fontWeight: FontWeight.w600,
     color: _primaryColor,
   );
-  static const TextStyle _labelStyle = TextStyle(
+  static TextStyle _labelStyle(BuildContext context) => TextStyle(
     fontSize: 12,
-    color: _subtleGray,
+    color: _subtleGray(context),
   );
-  static const TextStyle _valueStyle = TextStyle(
+  static TextStyle _valueStyle(BuildContext context) => TextStyle(
     fontSize: 12,
     fontWeight: FontWeight.w600,
-    color: Color(0xFF212121),
+    color: _isDark(context) ? const Color(0xFFE0E0E0) : const Color(0xFF212121),
   );
   static const TextStyle _tableHeaderStyle = TextStyle(
     fontSize: 11,
     fontWeight: FontWeight.w600,
     color: Colors.white,
   );
-  static const TextStyle _totalLabelStyle = TextStyle(
+  static TextStyle _totalLabelStyle(BuildContext context) => TextStyle(
     fontSize: 13,
-    color: Color(0xFF424242),
+    color: _isDark(context) ? const Color(0xFFB0B0B0) : const Color(0xFF424242),
   );
-  static const TextStyle _totalValueStyle = TextStyle(
+  static TextStyle _totalValueStyle(BuildContext context) => TextStyle(
     fontSize: 13,
     fontWeight: FontWeight.w600,
-    color: Color(0xFF212121),
+    color: _isDark(context) ? const Color(0xFFE0E0E0) : const Color(0xFF212121),
   );
   static const TextStyle _grandTotalStyle = TextStyle(
     fontSize: 20,
@@ -773,9 +793,9 @@ class ReceiptDetailPage extends StatelessWidget {
     fontWeight: FontWeight.w500,
     color: Colors.white70,
   );
-  static const TextStyle _metaStyle = TextStyle(
+  static TextStyle _metaStyle(BuildContext context) => TextStyle(
     fontSize: 11,
-    color: _subtleGray,
+    color: _subtleGray(context),
   );
 
   void _launchUrl(BuildContext context, String path) async {
@@ -819,11 +839,12 @@ class ReceiptDetailPage extends StatelessWidget {
 
   // ── Helper widgets ─────────────────────────────────────────────────
 
-  Widget _buildDashedDivider() {
+  Widget _buildDashedDivider(BuildContext context) {
+    final color = _dividerColor(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: LayoutBuilder(
-        builder: (context, constraints) {
+        builder: (_, constraints) {
           const dashWidth = 5.0;
           const dashGap = 3.0;
           final dashCount =
@@ -831,11 +852,11 @@ class ReceiptDetailPage extends StatelessWidget {
           return Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: List.generate(dashCount, (_) {
-              return const SizedBox(
+              return SizedBox(
                 width: dashWidth,
                 height: 1,
                 child: DecoratedBox(
-                  decoration: BoxDecoration(color: _dividerColor),
+                  decoration: BoxDecoration(color: color),
                 ),
               );
             }),
@@ -858,53 +879,57 @@ class ReceiptDetailPage extends StatelessWidget {
     );
   }
 
-  Widget _buildIconLabel(IconData icon, String text) {
+  Widget _buildIconLabel(BuildContext context, IconData icon, String text) {
     return Padding(
       padding: const EdgeInsets.only(right: 16, bottom: 4),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: _subtleGray),
+          Icon(icon, size: 13, color: _subtleGray(context)),
           const SizedBox(width: 4),
-          Flexible(child: Text(text, style: _metaStyle)),
+          Flexible(child: Text(text, style: _metaStyle(context))),
         ],
       ),
     );
   }
 
-  Widget _buildLabelValueRow(String label, String value) {
+  Widget _buildLabelValueRow(BuildContext context, String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: _labelStyle),
-          Flexible(child: Text(value, style: _valueStyle, textAlign: TextAlign.right)),
+          Text(label, style: _labelStyle(context)),
+          Flexible(child: Text(value, style: _valueStyle(context), textAlign: TextAlign.right)),
         ],
       ),
     );
   }
 
-  Widget _buildTotalRow(String label, double? value) {
+  Widget _buildTotalRow(BuildContext context, String label, double? value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: _totalLabelStyle),
+          Text(label, style: _totalLabelStyle(context)),
           Text(
             value != null ? moneyFormat.format(value) : '-',
-            style: _totalValueStyle,
+            style: _totalValueStyle(context),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildStyledThreeColumnTable({
+  Widget _buildStyledThreeColumnTable(
+    BuildContext context, {
     required List<String> headers,
     required List<List<String>> rows,
   }) {
+    final rowColor = _rowBg(context);
+    final stripe = _zebraStripe(context);
+    final borderColor = _isDark(context) ? const Color(0xFF444444) : Colors.grey.shade200;
     return Column(
       children: [
         // Header row
@@ -932,18 +957,18 @@ class ReceiptDetailPage extends StatelessWidget {
           return Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
             decoration: BoxDecoration(
-              color: i.isEven ? Colors.white : _zebraStripe,
+              color: i.isEven ? rowColor : stripe,
               border: i == rows.length - 1
-                  ? Border.all(color: Colors.grey.shade200, width: 0)
+                  ? Border.all(color: borderColor, width: 0)
                   : null,
             ),
             child: Row(
               children: [
-                Expanded(flex: 2, child: Text(row[0], style: _labelStyle)),
-                Expanded(flex: 3, child: Text(row[1], style: _valueStyle)),
+                Expanded(flex: 2, child: Text(row[0], style: _labelStyle(context))),
+                Expanded(flex: 3, child: Text(row[1], style: _valueStyle(context))),
                 Expanded(
                   flex: 2,
-                  child: Text(row[2], style: _valueStyle, textAlign: TextAlign.right),
+                  child: Text(row[2], style: _valueStyle(context), textAlign: TextAlign.right),
                 ),
               ],
             ),
@@ -958,7 +983,7 @@ class ReceiptDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFEEEEEE),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
           receipt.companyName,
@@ -981,28 +1006,29 @@ class ReceiptDetailPage extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         child: Card(
           elevation: 2,
+          color: _isDark(context) ? const Color(0xFF1E1E1E) : Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildCompanyHeader(),
-                _buildDashedDivider(),
+                _buildCompanyHeader(context),
+                _buildDashedDivider(context),
                 _buildCustomerInfo(context),
-                _buildDashedDivider(),
+                _buildDashedDivider(context),
                 _buildReceiptInfo(context),
-                _buildDashedDivider(),
+                _buildDashedDivider(context),
                 _buildItemsTable(context),
                 if (receipt.adjustments?.isNotEmpty ?? false) ...[
-                  _buildDashedDivider(),
+                  _buildDashedDivider(context),
                   _buildAdjustmentsTable(context),
                 ],
                 if (receipt.payments?.isNotEmpty ?? false) ...[
-                  _buildDashedDivider(),
+                  _buildDashedDivider(context),
                   _buildPaymentsTable(context),
                 ],
-                _buildDashedDivider(),
+                _buildDashedDivider(context),
                 _buildTotalsSection(context),
               ],
             ),
@@ -1014,7 +1040,7 @@ class ReceiptDetailPage extends StatelessWidget {
 
   // ── Company header ─────────────────────────────────────────────────
 
-  Widget _buildCompanyHeader() {
+  Widget _buildCompanyHeader(BuildContext context) {
     return Center(
       child: Column(
         children: [
@@ -1028,13 +1054,13 @@ class ReceiptDetailPage extends StatelessWidget {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.location_on_outlined, size: 14, color: _subtleGray),
+                Icon(Icons.location_on_outlined, size: 14, color: _subtleGray(context)),
                 const SizedBox(width: 4),
                 Flexible(
                   child: Text(
                     receipt.poBox!,
                     textAlign: TextAlign.center,
-                    style: _metaStyle,
+                    style: _metaStyle(context),
                   ),
                 ),
               ],
@@ -1047,17 +1073,17 @@ class ReceiptDetailPage extends StatelessWidget {
             runSpacing: 4,
             children: [
               if (receipt.mobile != null)
-                _buildIconLabel(Icons.phone_outlined, receipt.mobile!),
+                _buildIconLabel(context, Icons.phone_outlined, receipt.mobile!),
               if (receipt.tin != null)
-                _buildIconLabel(Icons.badge_outlined, 'TIN: ${receipt.tin}'),
+                _buildIconLabel(context, Icons.badge_outlined, 'TIN: ${receipt.tin}'),
               if (receipt.vrn != null)
-                _buildIconLabel(Icons.tag, 'VRN: ${receipt.vrn}'),
+                _buildIconLabel(context, Icons.tag, 'VRN: ${receipt.vrn}'),
               if (receipt.serialNumber != null)
-                _buildIconLabel(Icons.qr_code, 'S/N: ${receipt.serialNumber}'),
+                _buildIconLabel(context, Icons.qr_code, 'S/N: ${receipt.serialNumber}'),
               if (receipt.uin != null)
-                _buildIconLabel(Icons.fingerprint, 'UIN: ${receipt.uin}'),
+                _buildIconLabel(context, Icons.fingerprint, 'UIN: ${receipt.uin}'),
               if (receipt.taxOffice != null)
-                _buildIconLabel(Icons.account_balance_outlined, receipt.taxOffice!),
+                _buildIconLabel(context, Icons.account_balance_outlined, receipt.taxOffice!),
             ],
           ),
         ],
@@ -1076,15 +1102,15 @@ class ReceiptDetailPage extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: _lightBg,
+            color: _lightBg(context),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Column(
             children: [
-              _buildLabelValueRow(L.tr(context, 'label_name'), receipt.customer?.name ?? '-'),
-              _buildLabelValueRow(L.tr(context, 'label_id_type'), receipt.customer?.idType ?? '-'),
-              _buildLabelValueRow(L.tr(context, 'label_id'), receipt.customer?.id ?? '-'),
-              _buildLabelValueRow(L.tr(context, 'label_mobile'), receipt.customer?.mobile ?? 'n/a'),
+              _buildLabelValueRow(context, L.tr(context, 'label_name'), receipt.customer?.name ?? '-'),
+              _buildLabelValueRow(context, L.tr(context, 'label_id_type'), receipt.customer?.idType ?? '-'),
+              _buildLabelValueRow(context, L.tr(context, 'label_id'), receipt.customer?.id ?? '-'),
+              _buildLabelValueRow(context, L.tr(context, 'label_mobile'), receipt.customer?.mobile ?? 'n/a'),
             ],
           ),
         ),
@@ -1103,30 +1129,30 @@ class ReceiptDetailPage extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: _lightBg,
+            color: _lightBg(context),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Column(
             children: [
-              _buildLabelValueRow(L.tr(context, 'label_receipt_no'), receipt.number ?? '-'),
-              _buildLabelValueRow(L.tr(context, 'label_z_number'), receipt.zNumber ?? '-'),
+              _buildLabelValueRow(context, L.tr(context, 'label_receipt_no'), receipt.number ?? '-'),
+              _buildLabelValueRow(context, L.tr(context, 'label_z_number'), receipt.zNumber ?? '-'),
               const SizedBox(height: 6),
               Row(
                 children: [
                   Expanded(
                     child: Row(
                       children: [
-                        const Icon(Icons.calendar_today, size: 13, color: _subtleGray),
+                        Icon(Icons.calendar_today, size: 13, color: _subtleGray(context)),
                         const SizedBox(width: 4),
-                        Text(receipt.date ?? '-', style: _valueStyle),
+                        Text(receipt.date ?? '-', style: _valueStyle(context)),
                       ],
                     ),
                   ),
                   Row(
                     children: [
-                      const Icon(Icons.access_time, size: 13, color: _subtleGray),
+                      Icon(Icons.access_time, size: 13, color: _subtleGray(context)),
                       const SizedBox(width: 4),
-                      Text(receipt.time ?? '-', style: _valueStyle),
+                      Text(receipt.time ?? '-', style: _valueStyle(context)),
                     ],
                   ),
                 ],
@@ -1173,18 +1199,18 @@ class ReceiptDetailPage extends StatelessWidget {
             final item = entry.value;
             return Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              color: i.isEven ? Colors.white : _zebraStripe,
+              color: i.isEven ? _rowBg(context) : _zebraStripe(context),
               child: Row(
                 children: [
                   Expanded(
                     flex: 3,
-                    child: Text(item.description ?? '', style: _valueStyle),
+                    child: Text(item.description ?? '', style: _valueStyle(context)),
                   ),
                   Expanded(
                     flex: 1,
                     child: Text(
                       '${item.quantity ?? 1}',
-                      style: _labelStyle,
+                      style: _labelStyle(context),
                       textAlign: TextAlign.right,
                     ),
                   ),
@@ -1192,7 +1218,7 @@ class ReceiptDetailPage extends StatelessWidget {
                     flex: 2,
                     child: Text(
                       moneyFormat.format(item.amount ?? 0),
-                      style: _valueStyle,
+                      style: _valueStyle(context),
                       textAlign: TextAlign.right,
                     ),
                   ),
@@ -1212,6 +1238,7 @@ class ReceiptDetailPage extends StatelessWidget {
       children: [
         _buildSectionTitle(L.tr(context, 'section_adjustments'), Icons.tune),
         _buildStyledThreeColumnTable(
+          context,
           headers: [L.tr(context, 'table_type'), L.tr(context, 'table_description_lower'), L.tr(context, 'table_amount_lower')],
           rows: receipt.adjustments!
               .map((adj) => [
@@ -1233,6 +1260,7 @@ class ReceiptDetailPage extends StatelessWidget {
       children: [
         _buildSectionTitle(L.tr(context, 'section_payments'), Icons.payment),
         _buildStyledThreeColumnTable(
+          context,
           headers: [L.tr(context, 'table_type'), L.tr(context, 'table_description_lower'), L.tr(context, 'table_amount_lower')],
           rows: receipt.payments!
               .map((pmt) => [
@@ -1257,32 +1285,32 @@ class ReceiptDetailPage extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: _lightBg,
+            color: _lightBg(context),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Column(
             children: [
-              _buildTotalRow(L.tr(context, 'total_excl_tax'), receipt.totalExlcOfTax),
+              _buildTotalRow(context, L.tr(context, 'total_excl_tax'), receipt.totalExlcOfTax),
               if (receipt.isTanesco) ...[
                 if (receipt.kwhCharge != null && receipt.kwhCharge! > 0)
-                  _buildTotalRow(L.tr(context, 'kwh_charge'), receipt.kwhCharge),
+                  _buildTotalRow(context, L.tr(context, 'kwh_charge'), receipt.kwhCharge),
                 if (receipt.kvaCharge != null && receipt.kvaCharge! > 0)
-                  _buildTotalRow(L.tr(context, 'kva_charge'), receipt.kvaCharge),
+                  _buildTotalRow(context, L.tr(context, 'kva_charge'), receipt.kvaCharge),
                 if (receipt.serviceCharge != null && receipt.serviceCharge! > 0)
-                  _buildTotalRow(L.tr(context, 'service_charge'), receipt.serviceCharge),
+                  _buildTotalRow(context, L.tr(context, 'service_charge'), receipt.serviceCharge),
                 if (receipt.interestAmount != null && receipt.interestAmount! > 0)
-                  _buildTotalRow(L.tr(context, 'interest_amount'), receipt.interestAmount),
+                  _buildTotalRow(context, L.tr(context, 'interest_amount'), receipt.interestAmount),
                 if (receipt.taxRate != null)
-                  _buildTotalRow('${L.tr(context, 'total_tax')} (${receipt.taxRate}%)', receipt.totalTax),
+                  _buildTotalRow(context, '${L.tr(context, 'total_tax')} (${receipt.taxRate}%)', receipt.totalTax),
               ],
-              _buildTotalRow(L.tr(context, 'total_tax'), receipt.totalTax),
+              _buildTotalRow(context, L.tr(context, 'total_tax'), receipt.totalTax),
               if (receipt.isTanesco) ...[
                 if (receipt.reaCharge != null && receipt.reaCharge! > 0)
-                  _buildTotalRow(L.tr(context, 'rea_label'), receipt.reaCharge),
+                  _buildTotalRow(context, L.tr(context, 'rea_label'), receipt.reaCharge),
                 if (receipt.ewuraCharge != null && receipt.ewuraCharge! > 0)
-                  _buildTotalRow(L.tr(context, 'ewura_label'), receipt.ewuraCharge),
+                  _buildTotalRow(context, L.tr(context, 'ewura_label'), receipt.ewuraCharge),
                 if (receipt.propertyTax != null && receipt.propertyTax! > 0)
-                  _buildTotalRow(L.tr(context, 'property_tax'), receipt.propertyTax),
+                  _buildTotalRow(context, L.tr(context, 'property_tax'), receipt.propertyTax),
               ],
             ],
           ),
