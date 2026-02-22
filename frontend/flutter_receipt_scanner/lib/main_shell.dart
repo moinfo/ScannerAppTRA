@@ -361,7 +361,7 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   static const Color _primaryColor = Color(0xFF1565C0);
   final LocalAuthentication _localAuth = LocalAuthentication();
-  bool _biometricEnabled = true;
+  bool _biometricEnabled = false;
   bool _deviceSupportsBiometric = false;
 
   @override
@@ -382,7 +382,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
     if (!mounted) return;
     setState(() {
-      _biometricEnabled = prefs.getBool('biometricEnabled') ?? true;
+      _biometricEnabled = prefs.getBool('biometricEnabled') ?? false;
       _deviceSupportsBiometric = canCheck;
     });
   }
@@ -593,9 +593,11 @@ class _ProfilePageState extends State<ProfilePage> {
 
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
+    final biometricEnabled = prefs.getBool('biometricEnabled') ?? false;
 
-    // Invalidate token on server
-    if (token != null && token.isNotEmpty) {
+    // If biometric is OFF, invalidate token on server
+    // If biometric is ON, keep the token so fingerprint login works next time
+    if (!biometricEnabled && token != null && token.isNotEmpty) {
       try {
         await http.post(
           Uri.parse('${ApiConfig.baseUrl}/logout'),
@@ -604,16 +606,17 @@ class _ProfilePageState extends State<ProfilePage> {
             'Authorization': 'Bearer $token',
           },
         ).timeout(const Duration(seconds: 5));
-      } catch (_) {
-        // Server unreachable — still clear local data
-      }
+      } catch (_) {}
     }
 
-    // Clear auth data but preserve user preferences (biometric, theme, locale)
-    await prefs.remove('token');
+    // Clear login state but preserve user preferences (biometric, theme, locale)
     await prefs.remove('isLoggedIn');
     await prefs.remove('user');
     await prefs.remove('offline_receipts');
+    // Keep token alive for biometric re-login; clear it otherwise
+    if (!biometricEnabled) {
+      await prefs.remove('token');
+    }
 
     if (!context.mounted) return;
 

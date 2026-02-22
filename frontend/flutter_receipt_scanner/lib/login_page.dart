@@ -39,7 +39,7 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _checkBiometric() async {
     final prefs = await SharedPreferences.getInstance();
-    final enabled = prefs.getBool('biometricEnabled') ?? true;
+    final enabled = prefs.getBool('biometricEnabled') ?? false;
     if (!enabled) return;
 
     // Check device capability
