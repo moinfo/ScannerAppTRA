@@ -240,22 +240,6 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                     
-                    // Server status message
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.orange.shade200),
-                      ),
-                      child: const Text(
-                        'Backend server is currently unavailable. Please use the "Enter App" button below to access the app in offline mode.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.deepOrange),
-                      ),
-                    ),
-                    
                     // Title
                     const Text(
                       'Lemuru Receipt Scanner',
@@ -366,10 +350,10 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     const SizedBox(height: 16),
                     
-                    // Test login bypass button (always visible now due to server issues)
+                    // Offline mode button
                     TextButton(
                       onPressed: _isLoading ? null : _bypassLogin,
-                      child: const Text('Enter App (Server Unavailable)'),
+                      child: const Text('Enter App (Offline Mode)'),
                     ),
                   ],
                 ),

@@ -17,7 +17,7 @@ import 'dart:math' show min;
 // API URLs - Change these based on your environment
 class ApiConfig {
   // Set to true for local development, false for production
-  static const bool useLocalServer = true;
+  static const bool useLocalServer = false;
   
   // Base URLs
   static const String productionBaseUrl = 'https://lemuru.co.tz/api';
@@ -909,6 +909,7 @@ class _ScanPageState extends State<ScanPage> {
   final GlobalKey qrKey = GlobalKey(debugLabel: 'QR');
   MobileScannerController controller = MobileScannerController();
   bool frozen = false;
+  bool _isProcessing = false;
 
   bool receiptUrlFound = false;
 
@@ -1087,7 +1088,9 @@ class _ScanPageState extends State<ScanPage> {
       key: qrKey,
       controller: controller,
       onDetect: (capture) async {
+        if (_isProcessing) return;
         if (capture.barcodes.isNotEmpty && capture.barcodes.first.rawValue != null) {
+          _isProcessing = true;
           try {
             var url = capture.barcodes.first.rawValue!;
 
@@ -1112,6 +1115,8 @@ class _ScanPageState extends State<ScanPage> {
               receiptUrlFound = false;
               errMsg = 'Receipt Incorrect';
             });
+          } finally {
+            _isProcessing = false;
           }
         }
       },
