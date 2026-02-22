@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:provider/provider.dart';
@@ -591,6 +592,23 @@ class _ProfilePageState extends State<ProfilePage> {
     if (!shouldLogout || !context.mounted) return;
 
     final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+
+    // Invalidate token on server
+    if (token != null && token.isNotEmpty) {
+      try {
+        await http.post(
+          Uri.parse('${ApiConfig.baseUrl}/logout'),
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+        ).timeout(const Duration(seconds: 5));
+      } catch (_) {
+        // Server unreachable — still clear local data
+      }
+    }
+
     await prefs.clear();
 
     if (!context.mounted) return;
