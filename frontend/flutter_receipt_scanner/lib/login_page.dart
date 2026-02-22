@@ -1,11 +1,18 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:local_auth/local_auth.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_receipt_scanner/app_state.dart';
+import 'package:flutter_receipt_scanner/l10n.dart';
 import 'package:flutter_receipt_scanner/main.dart';
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({Key? key}) : super(key: key);
+  final bool hasSavedCredentials;
+
+  const LoginPage({Key? key, this.hasSavedCredentials = false})
+      : super(key: key);
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -17,10 +24,13 @@ class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
   String _errorMessage = '';
-  bool _shouldBypassLogin = false;
+  bool _obscurePassword = true;
 
-  // Use ApiConfig for URL management
   final String loginUrl = '${ApiConfig.baseUrl}/login';
+  final LocalAuthentication _localAuth = LocalAuthentication();
+
+  static const Color _brandBlue = Color(0xFF1565C0);
+  static const Color _brandLight = Color(0xFF1E88E5);
 
   @override
   void dispose() {
@@ -29,79 +39,40 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  // Helper method to bypass login for testing in case the server is down
-  Future<void> _bypassLogin() async {
-    debugPrint('Bypassing login for offline mode');
-    final prefs = await SharedPreferences.getInstance();
-    
-    // Store dummy authentication data
-    await prefs.setString('token', 'offline_token_${DateTime.now().millisecondsSinceEpoch}');
-    await prefs.setString('user', jsonEncode({
-      'name': _emailController.text.isEmpty ? 'Offline User' : _emailController.text.split('@')[0],
-      'email': _emailController.text.isEmpty ? 'offline@example.com' : _emailController.text,
-    }));
-    await prefs.setBool('isLoggedIn', true);
-    
-    // Store some dummy receipt data for offline testing
-    await prefs.setString('offline_receipts', jsonEncode([
-      {
-        'id': 1,
-        'companyName': 'Grocery Store TZ',
-        'date': '2025-03-24',
-        'time': '10:30 AM',
-        'amount': '12500',
-        'items': '5 items'
-      },
-      {
-        'id': 2,
-        'companyName': 'Electronics Shop',
-        'date': '2025-03-23',
-        'time': '02:15 PM',
-        'amount': '250000',
-        'items': '2 items'
-      },
-      {
-        'id': 3,
-        'companyName': 'Pharmacy',
-        'date': '2025-03-22',
-        'time': '09:45 AM',
-        'amount': '35000',
-        'items': '3 items'
-      }
-    ]));
-    
-    if (!mounted) return;
-    
-    // Show offline mode message
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Entering app in OFFLINE MODE as ${_emailController.text.isEmpty ? "Guest User" : _emailController.text}'),
-        backgroundColor: Colors.orange,
-        duration: const Duration(seconds: 2),
-      ),
-    );
-    
-    // Navigate with a delay to allow the message to be seen
-    Future.delayed(const Duration(seconds: 1), () {
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => const MyHomePage(),
+  // ── Biometric login ──────────────────────────────────────────────
+  Future<void> _biometricLogin() async {
+    try {
+      final bool canAuth = await _localAuth.canCheckBiometrics ||
+          await _localAuth.isDeviceSupported();
+      if (!canAuth) return;
+
+      final didAuth = await _localAuth.authenticate(
+        localizedReason: L.tr(context, 'biometric_reason'),
+        options: const AuthenticationOptions(
+          stickyAuth: true,
+          biometricOnly: true,
         ),
       );
-    });
+
+      if (!didAuth || !mounted) return;
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MyHomePage()),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(L.tr(context, 'biometric_failed')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
+  // ── Email / password login ───────────────────────────────────────
   Future<void> _login() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
-    
-    // If bypass flag is set, skip normal login and use the test login
-    if (_shouldBypassLogin) {
-      await _bypassLogin();
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
 
     setState(() {
       _isLoading = true;
@@ -109,257 +80,535 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      // Print debug information
-      debugPrint('Attempting login with URL: $loginUrl');
-      debugPrint('Email: ${_emailController.text.trim()}');
-      
-      final response = await http.post(
-        Uri.parse(loginUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode({
-          'email': _emailController.text.trim(),
-          'password': _passwordController.text,
-        }),
-      ).timeout(const Duration(seconds: 15));
+      final response = await http
+          .post(
+            Uri.parse(loginUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'email': _emailController.text.trim(),
+              'password': _passwordController.text,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
 
-      debugPrint('Login response status: ${response.statusCode}');
-      debugPrint('Login response body: ${response.body}');
-      
       if (response.statusCode == 200) {
         try {
           final data = jsonDecode(response.body);
-          
+
           if (data['token'] == null) {
             throw Exception('Token not found in response');
           }
-          
-          // Save token and user info to SharedPreferences
+
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('token', data['token']);
-          await prefs.setString('user', jsonEncode(data['user'] ?? {'name': 'User', 'email': _emailController.text.trim()}));
+          await prefs.setString(
+            'user',
+            jsonEncode(data['user'] ??
+                {
+                  'name': 'User',
+                  'email': _emailController.text.trim(),
+                }),
+          );
           await prefs.setBool('isLoggedIn', true);
-          
+
           if (!mounted) return;
 
-          // Show success message
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Login successful! Welcome ${data['user']['name'] ?? 'User'}'),
-              backgroundColor: Colors.green,
+              content: Text(
+                  '${L.tr(context, 'login_success')} ${data['user']?['name'] ?? ''}'),
+              backgroundColor: _brandBlue,
               duration: const Duration(seconds: 2),
             ),
           );
-          
-          // Navigate to main app and remove login page from stack
-          // Delayed to allow the user to see the success message
+
           Future.delayed(const Duration(seconds: 1), () {
             if (!mounted) return;
             Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (context) => const MyHomePage(),
-              ),
+              MaterialPageRoute(builder: (_) => const MyHomePage()),
             );
           });
-        } catch (jsonError) {
-          debugPrint('Error parsing response: $jsonError');
+        } catch (_) {
           setState(() {
-            _errorMessage = 'Invalid server response. Please try again.';
+            _errorMessage = L.tr(context, 'invalid_server_response');
           });
         }
-      } else if (response.statusCode == 404) {
-        // Handle 404 Not Found - Backend server issue
-        setState(() {
-          _errorMessage = 'Server Error: The login endpoint is not available (404). Please use the "Enter App" button below to access the app.';
-        });
       } else {
-        // Handle other errors
         try {
           final error = jsonDecode(response.body);
           setState(() {
-            _errorMessage = error['message'] ?? 'Login failed with status ${response.statusCode}';
+            _errorMessage = error['message'] ??
+                'Login failed with status ${response.statusCode}';
           });
-        } catch (jsonError) {
+        } catch (_) {
           setState(() {
-            _errorMessage = 'Login failed with status ${response.statusCode}';
+            _errorMessage =
+                'Login failed with status ${response.statusCode}';
           });
         }
       }
     } catch (e) {
-      debugPrint('Login exception: $e');
-      
-      // If we're in local development mode and there's a network error,
-      // it might be because the backend server is not running.
-      // In this case, we can offer to bypass login for testing
-      if (ApiConfig.useLocalServer && (e.toString().contains('SocketException') || 
-          e.toString().contains('Connection refused') || 
-          e.toString().contains('Network is unreachable'))) {
-        
-        setState(() {
-          _errorMessage = 'Network error: $e\n\nBypass login for testing? (Tap "Login" again)';
-          _isLoading = false;
-        });
-        
-        // Add a flag to bypass login next time
-        _shouldBypassLogin = true;
-        return;
-      }
-      
       setState(() {
-        _errorMessage = 'Network error: $e';
+        _errorMessage = '${L.tr(context, 'network_error')}: $e';
       });
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  // ── Build ────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    final isDark =
+        Provider.of<AppState>(context).themeMode == ThemeMode.dark;
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+
     return Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Center(
-            child: SingleChildScrollView(
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isDark
+                ? [const Color(0xFF0D47A1), const Color(0xFF1A237E), const Color(0xFF121212)]
+                : [const Color(0xFF1565C0), const Color(0xFF1976D2), const Color(0xFFE3F2FD)],
+            stops: const [0.0, 0.3, 0.7],
+          ),
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              // ── Top toolbar: language + theme ────────────────────
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    // Logo
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 40.0),
-                      child: Image.asset(
-                        'assets/icon/lemurulogo.png',
-                        height: 120,
-                      ),
-                    ),
-                    
-                    // Title
-                    const Text(
-                      'Lemuru Receipt Scanner',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Please login to continue',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.grey,
-                      ),
-                    ),
-                    const SizedBox(height: 30),
-                    
-                    // Error message
-                    if (_errorMessage.isNotEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.red.shade200),
-                        ),
-                        child: Text(
-                          _errorMessage,
-                          style: TextStyle(color: Colors.red.shade800),
-                        ),
-                      ),
-                    
-                    // Email field
-                    TextFormField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: InputDecoration(
-                        labelText: 'Email',
-                        hintText: 'Enter your email',
-                        prefixIcon: const Icon(Icons.email),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter your email';
-                        }
-                        if (!value.contains('@')) {
-                          return 'Please enter a valid email';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Password field
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: true,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        hintText: 'Enter your password',
-                        prefixIcon: const Icon(Icons.lock),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter your password';
-                        }
-                        if (value.length < 6) {
-                          return 'Password must be at least 6 characters';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 24),
-                    
-                    // Login button
-                    ElevatedButton(
-                      onPressed: _isLoading ? null : _login,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : const Text(
-                              'Login',
-                              style: TextStyle(fontSize: 16),
-                            ),
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Offline mode button
-                    TextButton(
-                      onPressed: _isLoading ? null : _bypassLogin,
-                      child: const Text('Enter App (Offline Mode)'),
-                    ),
+                    _buildLanguageChip(context),
+                    const SizedBox(width: 8),
+                    _buildThemeToggle(context, isDark),
                   ],
                 ),
               ),
-            ),
+
+              // ── Scrollable body ─────────────────────────────────
+              Expanded(
+                child: Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 28),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(height: 8),
+
+                        // Logo with elevated shadow
+                        Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.25),
+                                blurRadius: 24,
+                                spreadRadius: 2,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                          child: CircleAvatar(
+                            radius: 52,
+                            backgroundColor: Colors.white,
+                            child: ClipOval(
+                              child: Image.asset(
+                                'assets/icon/lemurulogo.png',
+                                width: 78,
+                                height: 78,
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Title
+                        Text(
+                          L.tr(context, 'login_title'),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          L.tr(context, 'login_subtitle'),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.white.withValues(alpha: 0.7),
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+
+                        // ── Form card ─────────────────────────────
+                        Container(
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? const Color(0xFF1E1E1E)
+                                : Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.15),
+                                blurRadius: 30,
+                                spreadRadius: 0,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(22, 28, 22, 24),
+                            child: Form(
+                              key: _formKey,
+                              child: Column(
+                                children: [
+                                  // Error message
+                                  if (_errorMessage.isNotEmpty)
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(12),
+                                      margin:
+                                          const EdgeInsets.only(bottom: 18),
+                                      decoration: BoxDecoration(
+                                        color: Colors.red.shade50,
+                                        borderRadius:
+                                            BorderRadius.circular(10),
+                                        border: Border.all(
+                                            color: Colors.red.shade200),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.error_outline,
+                                              size: 18,
+                                              color: Colors.red.shade700),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              _errorMessage,
+                                              style: TextStyle(
+                                                  color: Colors.red.shade800,
+                                                  fontSize: 13),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+
+                                  // Email field
+                                  _buildTextField(
+                                    controller: _emailController,
+                                    label: L.tr(context, 'email_label'),
+                                    hint: L.tr(context, 'email_hint'),
+                                    icon: Icons.email_outlined,
+                                    keyboardType: TextInputType.emailAddress,
+                                    isDark: isDark,
+                                    validator: (value) {
+                                      if (value == null || value.isEmpty) {
+                                        return L.tr(context, 'email_required');
+                                      }
+                                      if (!value.contains('@')) {
+                                        return L.tr(context, 'email_invalid');
+                                      }
+                                      return null;
+                                    },
+                                  ),
+                                  const SizedBox(height: 16),
+
+                                  // Password field
+                                  _buildTextField(
+                                    controller: _passwordController,
+                                    label: L.tr(context, 'password_label'),
+                                    hint: L.tr(context, 'password_hint'),
+                                    icon: Icons.lock_outline,
+                                    obscure: _obscurePassword,
+                                    isDark: isDark,
+                                    suffixIcon: IconButton(
+                                      icon: Icon(
+                                        _obscurePassword
+                                            ? Icons.visibility_off_outlined
+                                            : Icons.visibility_outlined,
+                                        size: 20,
+                                        color: Colors.grey.shade500,
+                                      ),
+                                      onPressed: () => setState(() =>
+                                          _obscurePassword =
+                                              !_obscurePassword),
+                                    ),
+                                    validator: (value) {
+                                      if (value == null || value.isEmpty) {
+                                        return L.tr(
+                                            context, 'password_required');
+                                      }
+                                      if (value.length < 6) {
+                                        return L.tr(
+                                            context, 'password_too_short');
+                                      }
+                                      return null;
+                                    },
+                                  ),
+                                  const SizedBox(height: 28),
+
+                                  // Login button — gradient with shadow
+                                  Container(
+                                    width: double.infinity,
+                                    height: 52,
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [
+                                          Color(0xFF1565C0),
+                                          Color(0xFF1E88E5),
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                      boxShadow: _isLoading
+                                          ? []
+                                          : [
+                                              BoxShadow(
+                                                color: _brandBlue
+                                                    .withValues(alpha: 0.4),
+                                                blurRadius: 12,
+                                                offset: const Offset(0, 4),
+                                              ),
+                                            ],
+                                    ),
+                                    child: Material(
+                                      color: Colors.transparent,
+                                      child: InkWell(
+                                        borderRadius:
+                                            BorderRadius.circular(12),
+                                        onTap: _isLoading ? null : _login,
+                                        child: Center(
+                                          child: _isLoading
+                                              ? const SizedBox(
+                                                  height: 22,
+                                                  width: 22,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                    strokeWidth: 2.5,
+                                                    valueColor:
+                                                        AlwaysStoppedAnimation<
+                                                                Color>(
+                                                            Colors.white),
+                                                  ),
+                                                )
+                                              : Text(
+                                                  L.tr(context,
+                                                      'login_button'),
+                                                  style: const TextStyle(
+                                                    fontSize: 16,
+                                                    fontWeight:
+                                                        FontWeight.w700,
+                                                    color: Colors.white,
+                                                    letterSpacing: 0.5,
+                                                  ),
+                                                ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // ── Biometric button ─────────────────────
+                        ...[
+                          const SizedBox(height: 24),
+                          Column(
+                            children: [
+                              Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: isDark
+                                      ? Colors.white.withValues(alpha: 0.1)
+                                      : _brandBlue.withValues(alpha: 0.1),
+                                  border: Border.all(
+                                    color: isDark
+                                        ? Colors.white.withValues(alpha: 0.3)
+                                        : _brandBlue.withValues(alpha: 0.4),
+                                    width: 2,
+                                  ),
+                                ),
+                                child: IconButton(
+                                  onPressed: _biometricLogin,
+                                  icon: const Icon(Icons.fingerprint),
+                                  iconSize: 44,
+                                  color: isDark ? Colors.white : _brandBlue,
+                                  padding: const EdgeInsets.all(14),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                L.tr(context, 'biometric_login'),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark
+                                      ? Colors.white70
+                                      : _brandBlue,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+
+                        const SizedBox(height: 32),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              // ── Powered by footer — pinned at bottom ──────────
+              Padding(
+                padding: EdgeInsets.only(bottom: bottomPad + 16, top: 8),
+                child: Text(
+                  L.tr(context, 'powered_by'),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: isDark
+                        ? Colors.white30
+                        : _brandBlue.withValues(alpha: 0.6),
+                  ),
+                ),
+              ),
+            ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // ── Reusable text field builder ─────────────────────────────────
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    required bool isDark,
+    TextInputType? keyboardType,
+    bool obscure = false,
+    Widget? suffixIcon,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      obscureText: obscure,
+      style: const TextStyle(fontSize: 15),
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        prefixIcon: Icon(icon, size: 20),
+        suffixIcon: suffixIcon,
+        filled: true,
+        fillColor: isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFF5F7FA),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: isDark ? Colors.white12 : const Color(0xFFE0E0E0),
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _brandBlue, width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.red.shade300),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.red.shade400, width: 2),
+        ),
+      ),
+      validator: validator,
+    );
+  }
+
+  // ── Language chip toggle ────────────────────────────────────────
+  Widget _buildLanguageChip(BuildContext context) {
+    final appState = Provider.of<AppState>(context);
+    final isEn = appState.locale == 'en';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _langOption('EN', isEn, () => appState.setLocale('en')),
+          _langOption('SW', !isEn, () => appState.setLocale('sw')),
+        ],
+      ),
+    );
+  }
+
+  Widget _langOption(String label, bool active, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: active ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: active ? _brandBlue : Colors.white70,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Theme toggle ───────────────────────────────────────────────
+  Widget _buildThemeToggle(BuildContext context, bool isDark) {
+    return GestureDetector(
+      onTap: () =>
+          Provider.of<AppState>(context, listen: false).toggleTheme(),
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.15),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+        ),
+        child: Icon(
+          isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+          color: Colors.white,
+          size: 20,
         ),
       ),
     );

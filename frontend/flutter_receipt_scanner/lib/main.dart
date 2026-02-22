@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter_receipt_scanner/app_state.dart';
+import 'package:flutter_receipt_scanner/l10n.dart';
 import 'package:flutter_receipt_scanner/login_page.dart';
 import 'package:flutter_receipt_scanner/utils/api_request_status.dart';
 import 'package:intl/intl.dart';
@@ -12,7 +14,6 @@ import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:math' show min;
 
 // API URLs - Change these based on your environment
 class ApiConfig {
@@ -37,35 +38,66 @@ class ApiConfig {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Check if user is logged in
+
+  // Load persisted state
   final prefs = await SharedPreferences.getInstance();
   final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
-  
-  runApp(MyApp(isLoggedIn: isLoggedIn));
+  final bool hasSavedCredentials = prefs.getString('token') != null && isLoggedIn;
+  final appState = await AppState.load();
+
+  runApp(MyApp(
+    isLoggedIn: isLoggedIn,
+    hasSavedCredentials: hasSavedCredentials,
+    appState: appState,
+  ));
 }
 
 class MyApp extends StatelessWidget {
   final bool isLoggedIn;
-  
-  const MyApp({super.key, this.isLoggedIn = false});
-  
+  final bool hasSavedCredentials;
+  final AppState appState;
+
+  const MyApp({
+    super.key,
+    this.isLoggedIn = false,
+    this.hasSavedCredentials = false,
+    required this.appState,
+  });
+
+  static const Color _primaryBlue = Color(0xFF1565C0);
+
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (context) => ReceiptProvider(),
-      child: MaterialApp(
-        debugShowCheckedModeBanner: false,
-        title: 'Flutter Receipt Scanner',
-        theme: ThemeData(
-          primarySwatch: Colors.blue,
-          useMaterial3: true,
-        ),
-        home: isLoggedIn ? const MyHomePage() : const LoginPage(),
-        routes: {
-          'scan': (context) => const ScanPage(),
-          'login': (context) => const LoginPage(),
-          'home': (context) => const MyHomePage(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: appState),
+        ChangeNotifierProvider(create: (_) => ReceiptProvider()),
+      ],
+      child: Consumer<AppState>(
+        builder: (context, state, _) {
+          return MaterialApp(
+            debugShowCheckedModeBanner: false,
+            title: 'Flutter Receipt Scanner',
+            theme: ThemeData(
+              useMaterial3: true,
+              colorSchemeSeed: _primaryBlue,
+              brightness: Brightness.light,
+            ),
+            darkTheme: ThemeData(
+              useMaterial3: true,
+              colorSchemeSeed: _primaryBlue,
+              brightness: Brightness.dark,
+            ),
+            themeMode: state.themeMode,
+            home: isLoggedIn
+                ? const MyHomePage()
+                : LoginPage(hasSavedCredentials: hasSavedCredentials),
+            routes: {
+              'scan': (context) => const ScanPage(),
+              'login': (context) => const LoginPage(),
+              'home': (context) => const MyHomePage(),
+            },
+          );
         },
       ),
     );
@@ -83,13 +115,39 @@ class NoItems extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Text(errMsg),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.receipt_long_outlined,
+            size: 64,
+            color: Colors.grey.shade300,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            errMsg,
+            style: TextStyle(
+              fontSize: 15,
+              color: Colors.grey.shade500,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            L.tr(context, 'scan_to_start'),
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade400,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
 class ReceiptCard extends StatelessWidget {
-  const ReceiptCard({
+  ReceiptCard({
     super.key,
     required this.receipt,
     required this.index,
@@ -97,30 +155,159 @@ class ReceiptCard extends StatelessWidget {
 
   final Receipt receipt;
   final int index;
+  final _moneyFormat = NumberFormat.currency(name: '', decimalDigits: 2);
+
+  static const Color _primaryColor = Color(0xFF1565C0);
+  static const Color _subtleGray = Color(0xFF757575);
+
+  String _timeAgo(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays == 1) return 'Yesterday';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return DateFormat('dd MMM').format(dt);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      leading: CircleAvatar(
-        child: Text('${index + 1}', style: const TextStyle(fontSize: 13)),
-      ),
-      title: Text(
-        receipt.companyName,
-        style: const TextStyle(fontSize: 13),
-      ),
-      subtitle: Text(
-        '${receipt.date} ${receipt.time}',
-        style: const TextStyle(fontSize: 12),
-      ),
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (BuildContext context) {
-              return ReceiptDetailPage(receipt: receipt);
-            },
+    final initials = receipt.companyName
+        .split(' ')
+        .where((w) => w.isNotEmpty)
+        .take(2)
+        .map((w) => w[0].toUpperCase())
+        .join();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Card(
+        elevation: 1,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (BuildContext context) {
+                  return ReceiptDetailPage(receipt: receipt);
+                },
+              ),
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                // Company initial avatar
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: _primaryColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    initials,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: _primaryColor,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Company name + metadata
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        receipt.companyName,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF212121),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.calendar_today, size: 12, color: _subtleGray),
+                          const SizedBox(width: 3),
+                          Text(
+                            receipt.date ?? '',
+                            style: const TextStyle(fontSize: 11, color: _subtleGray),
+                          ),
+                          const SizedBox(width: 10),
+                          const Icon(Icons.access_time, size: 12, color: _subtleGray),
+                          const SizedBox(width: 3),
+                          Text(
+                            receipt.time ?? '',
+                            style: const TextStyle(fontSize: 11, color: _subtleGray),
+                          ),
+                        ],
+                      ),
+                      if (receipt.number != null && receipt.number!.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            const Icon(Icons.tag, size: 12, color: _subtleGray),
+                            const SizedBox(width: 3),
+                            Flexible(
+                              child: Text(
+                                receipt.number!,
+                                style: const TextStyle(fontSize: 11, color: _subtleGray),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Total amount + time ago
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (receipt.totalInclOfTax != null) ...[
+                      Text(
+                        _moneyFormat.format(receipt.totalInclOfTax),
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: _primaryColor,
+                        ),
+                      ),
+                      const Text(
+                        'TZS',
+                        style: TextStyle(fontSize: 10, color: _subtleGray),
+                      ),
+                    ],
+                    if (receipt.createdAt != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          _timeAgo(receipt.createdAt!),
+                          style: const TextStyle(fontSize: 10, color: _subtleGray),
+                        ),
+                      ),
+                  ],
+                  ),
+                const SizedBox(width: 4),
+                const Icon(Icons.chevron_right, size: 20, color: _subtleGray),
+              ],
+            ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }
@@ -203,20 +390,16 @@ class _MyHomePageState extends State<MyHomePage> {
   }
   
   void _showLoginStatusToast() {
-    // Show a toast message with login status
     final scaffold = ScaffoldMessenger.of(context);
+    final loggedInAs = L.tr(context, 'logged_in_as');
+    final offlineLabel = L.tr(context, 'offline_mode');
     scaffold.showSnackBar(
       SnackBar(
         content: _isOfflineMode
-            ? Text('Logged in as $_userName (Offline Mode)')
-            : Text('Logged in as $_userName ($_userEmail)'),
-        backgroundColor: _isOfflineMode ? Colors.orange : Colors.green,
-        duration: const Duration(seconds: 3),
-        action: SnackBarAction(
-          label: 'OK',
-          onPressed: scaffold.hideCurrentSnackBar,
-          textColor: Colors.white,
-        ),
+            ? Text('$loggedInAs $_userName ($offlineLabel)')
+            : Text('$loggedInAs $_userName ($_userEmail)'),
+        backgroundColor: _isOfflineMode ? Colors.orange : const Color(0xFF1565C0),
+        duration: const Duration(seconds: 2),
       ),
     );
   }
@@ -269,45 +452,39 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void _logout() async {
-    // Show confirmation dialog
     final shouldLogout = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Confirm Logout'),
-        content: Text(_isOfflineMode 
-          ? 'Are you sure you want to exit offline mode? You will need to login again.'
-          : 'Are you sure you want to logout?'),
+      builder: (ctx) => AlertDialog(
+        title: Text(L.tr(context, 'confirm_logout')),
+        content: Text(L.tr(context, 'logout_confirm_msg')),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(L.tr(context, 'cancel')),
           ),
           TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Logout'),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(L.tr(context, 'logout')),
           ),
         ],
       ),
     ) ?? false;
-    
+
     if (!shouldLogout || !mounted) return;
-    
-    // Perform logout
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
-    
+
     if (!mounted) return;
-    
-    // Show logout message
+
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Logged out successfully'),
+      SnackBar(
+        content: Text(L.tr(context, 'logged_out')),
         backgroundColor: Colors.blue,
-        duration: Duration(seconds: 2),
+        duration: const Duration(seconds: 2),
       ),
     );
-    
-    // Navigate back to login page
+
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (context) => const LoginPage(),
@@ -315,91 +492,172 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
+  static const Color _primaryColor = Color(0xFF1565C0);
+
   @override
   Widget build(BuildContext context) {
+    final bool hasActiveFilters = _startDate != null || _searchController.text.trim().isNotEmpty;
+
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
+        backgroundColor: _primaryColor,
+        foregroundColor: Colors.white,
+        elevation: 0,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Lemuru Scanner App'),
-            if (_userEmail.isNotEmpty) 
+            Text(
+              L.tr(context, 'app_title'),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+            if (_userEmail.isNotEmpty)
               Text(
-                _isOfflineMode 
-                    ? 'Offline Mode - $_userName' 
-                    : '$_userName ($_userEmail)',
-                style: const TextStyle(fontSize: 12),
+                _isOfflineMode
+                    ? '${L.tr(context, 'offline_mode')} - $_userName'
+                    : _userEmail,
+                style: const TextStyle(fontSize: 11, color: Colors.white70),
               ),
           ],
         ),
         actions: [
           if (_isOfflineMode)
-            Container(
-              padding: const EdgeInsets.all(8.0),
-              child: const Icon(Icons.cloud_off, color: Colors.orange),
+            const Padding(
+              padding: EdgeInsets.all(8.0),
+              child: Icon(Icons.cloud_off, color: Colors.orangeAccent, size: 20),
             ),
           IconButton(
-            icon: const Icon(Icons.logout),
+            icon: const Icon(Icons.logout, size: 22),
             onPressed: _logout,
-            tooltip: 'Logout',
+            tooltip: '',
           ),
         ],
       ),
       body: Column(
         children: [
-          // Search and filter section
-          Padding(
-            padding: const EdgeInsets.all(8.0),
+          // Search and filter section with blue accent background
+          Container(
+            decoration: const BoxDecoration(
+              color: _primaryColor,
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
+            ),
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
             child: Column(
               children: [
                 // Search bar
                 TextField(
                   controller: _searchController,
+                  style: const TextStyle(fontSize: 14),
                   decoration: InputDecoration(
-                    hintText: 'Search by company name',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _searchController.clear();
-                        _applyDateFilter();
-                      },
-                    ),
+                    hintText: L.tr(context, 'search_hint'),
+                    hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 18),
+                            onPressed: () {
+                              _searchController.clear();
+                              _applyDateFilter();
+                            },
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8.0),
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide.none,
                     ),
                   ),
                   onSubmitted: (_) => _applyDateFilter(),
+                  onChanged: (_) => setState(() {}), // refresh suffix icon
                 ),
                 const SizedBox(height: 8),
-                
                 // Date filter row
                 Row(
                   children: [
                     Expanded(
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.date_range),
-                        label: Text(_startDate != null && _endDate != null 
-                            ? '${DateFormat('dd/MM/yy').format(_startDate!)} - ${DateFormat('dd/MM/yy').format(_endDate!)}'
-                            : 'Select Date Range'),
-                        onPressed: () => _selectDateRange(context),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: () => _selectDateRange(context),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.white24),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.date_range, size: 18, color: Colors.white70),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _startDate != null && _endDate != null
+                                      ? '${DateFormat('dd MMM yy').format(_startDate!)} - ${DateFormat('dd MMM yy').format(_endDate!)}'
+                                      : L.tr(context, 'date_range'),
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: _startDate != null ? Colors.white : Colors.white60,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: const Icon(Icons.filter_list),
-                      onPressed: _applyDateFilter,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.clear_all),
-                      onPressed: _clearFilters,
-                    ),
+                    if (hasActiveFilters) ...[
+                      const SizedBox(width: 8),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: _clearFilters,
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.filter_alt_off, size: 18, color: Colors.white70),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ],
             ),
           ),
-          
+
+          // Receipt count indicator
+          Consumer<ReceiptProvider>(
+            builder: (context, provider, _) {
+              if (provider.apiRequestStatus == APIRequestStatus.loaded &&
+                  provider.receipts.isNotEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: Row(
+                    children: [
+                      Text(
+                        '${provider.receipts.length} ${provider.receipts.length == 1 ? L.tr(context, 'receipt_count') : L.tr(context, 'receipts_count')}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF757575),
+                        ),
+                      ),
+                      if (provider.hasMoreData)
+                        const Text(
+                          ' +',
+                          style: TextStyle(fontSize: 12, color: Color(0xFF757575)),
+                        ),
+                    ],
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+
           // Receipts list
           Expanded(
             child: Consumer<ReceiptProvider>(
@@ -409,6 +667,8 @@ class _MyHomePageState extends State<MyHomePage> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        backgroundColor: _primaryColor,
+        foregroundColor: Colors.white,
         onPressed: () =>
             Navigator.pushNamed(context, ScanPage.route).then((value) async {
               await Provider.of<ReceiptProvider>(context, listen: false)
@@ -436,20 +696,52 @@ class _MyHomePageState extends State<MyHomePage> {
 
     if (receiptProvider.apiRequestStatus == APIRequestStatus.error ||
         receiptProvider.apiRequestStatus == APIRequestStatus.networkError) {
+      final isNetwork = receiptProvider.apiRequestStatus == APIRequestStatus.networkError;
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('Error: ${receiptProvider.lastError}'),
-            ElevatedButton(
-              onPressed: () => receiptProvider.fetchReceipts(
-                startDate: _startDate,
-                endDate: _endDate,
-                searchTerm: _searchController.text.trim(),
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                isNetwork ? Icons.wifi_off_rounded : Icons.error_outline_rounded,
+                size: 56,
+                color: Colors.grey.shade400,
               ),
-              child: const Text('Retry'),
-            ),
-          ],
+              const SizedBox(height: 16),
+              Text(
+                isNetwork ? L.tr(context, 'no_connection') : L.tr(context, 'something_wrong'),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF424242),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                receiptProvider.lastError,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: () => receiptProvider.fetchReceipts(
+                  startDate: _startDate,
+                  endDate: _endDate,
+                  searchTerm: _searchController.text.trim(),
+                ),
+                icon: const Icon(Icons.refresh, size: 18),
+                label: Text(L.tr(context, 'retry')),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _primaryColor,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -505,7 +797,7 @@ class _MyHomePageState extends State<MyHomePage> {
     }
 
     debugPrint('No receipts found');
-    return const NoItems(errMsg: 'No receipts found.');
+    return NoItems(errMsg: L.tr(context, 'no_receipts'));
   }
 }
 
@@ -517,8 +809,61 @@ class ReceiptDetailPage extends StatelessWidget {
 
   final Receipt receipt;
   final moneyFormat = NumberFormat.currency(name: '', decimalDigits: 2);
-  final TextStyle receiptTextStyle = const TextStyle(
-    fontSize: 12.0,
+
+  // ── Color palette ──────────────────────────────────────────────────
+  static const Color _primaryColor = Color(0xFF1565C0);
+  static const Color _subtleGray = Color(0xFF757575);
+  static const Color _lightBg = Color(0xFFF5F5F5);
+  static const Color _dividerColor = Color(0xFFBDBDBD);
+  static const Color _zebraStripe = Color(0xFFF9F9F9);
+
+  // ── Text styles ────────────────────────────────────────────────────
+  static const TextStyle _companyNameStyle = TextStyle(
+    fontSize: 18,
+    fontWeight: FontWeight.bold,
+    color: _primaryColor,
+  );
+  static const TextStyle _sectionTitleStyle = TextStyle(
+    fontSize: 14,
+    fontWeight: FontWeight.w600,
+    color: _primaryColor,
+  );
+  static const TextStyle _labelStyle = TextStyle(
+    fontSize: 12,
+    color: _subtleGray,
+  );
+  static const TextStyle _valueStyle = TextStyle(
+    fontSize: 12,
+    fontWeight: FontWeight.w600,
+    color: Color(0xFF212121),
+  );
+  static const TextStyle _tableHeaderStyle = TextStyle(
+    fontSize: 11,
+    fontWeight: FontWeight.w600,
+    color: Colors.white,
+  );
+  static const TextStyle _totalLabelStyle = TextStyle(
+    fontSize: 13,
+    color: Color(0xFF424242),
+  );
+  static const TextStyle _totalValueStyle = TextStyle(
+    fontSize: 13,
+    fontWeight: FontWeight.w600,
+    color: Color(0xFF212121),
+  );
+  static const TextStyle _grandTotalStyle = TextStyle(
+    fontSize: 20,
+    fontWeight: FontWeight.bold,
+    color: Colors.white,
+  );
+  static const TextStyle _grandTotalLabelStyle = TextStyle(
+    fontSize: 14,
+    fontWeight: FontWeight.w500,
+    color: Colors.white70,
+  );
+  static const TextStyle _metaStyle = TextStyle(
+    fontSize: 11,
+    color: _subtleGray,
   );
 
   void _launchUrl(BuildContext context, String path) async {
@@ -529,16 +874,16 @@ class ReceiptDetailPage extends StatelessWidget {
 
       showDialog(
         context: context,
-        builder: (context) {
+        builder: (ctx) {
           return AlertDialog(
             content: SingleChildScrollView(
               child: SizedBox(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
+                  children: [
                     Text(
-                      'Failed to open browser',
-                      style: TextStyle(fontSize: 14),
+                      L.tr(context, 'failed_open_browser'),
+                      style: const TextStyle(fontSize: 14),
                     ),
                   ],
                 ),
@@ -547,9 +892,9 @@ class ReceiptDetailPage extends StatelessWidget {
             actions: [
               TextButton(
                 onPressed: () {
-                  Navigator.of(context).pop();
+                  Navigator.of(ctx).pop();
                 },
-                child: const Text('Close'),
+                child: Text(L.tr(context, 'close')),
               ),
             ],
           );
@@ -560,9 +905,148 @@ class ReceiptDetailPage extends StatelessWidget {
     }
   }
 
+  // ── Helper widgets ─────────────────────────────────────────────────
+
+  Widget _buildDashedDivider() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          const dashWidth = 5.0;
+          const dashGap = 3.0;
+          final dashCount =
+              (constraints.maxWidth / (dashWidth + dashGap)).floor();
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(dashCount, (_) {
+              return const SizedBox(
+                width: dashWidth,
+                height: 1,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(color: _dividerColor),
+                ),
+              );
+            }),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: _primaryColor),
+          const SizedBox(width: 8),
+          Text(title, style: _sectionTitleStyle),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIconLabel(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 16, bottom: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: _subtleGray),
+          const SizedBox(width: 4),
+          Flexible(child: Text(text, style: _metaStyle)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLabelValueRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: _labelStyle),
+          Flexible(child: Text(value, style: _valueStyle, textAlign: TextAlign.right)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTotalRow(String label, double? value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: _totalLabelStyle),
+          Text(
+            value != null ? moneyFormat.format(value) : '-',
+            style: _totalValueStyle,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStyledThreeColumnTable({
+    required List<String> headers,
+    required List<List<String>> rows,
+  }) {
+    return Column(
+      children: [
+        // Header row
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: _primaryColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+          ),
+          child: Row(
+            children: [
+              Expanded(flex: 2, child: Text(headers[0], style: _tableHeaderStyle)),
+              Expanded(flex: 3, child: Text(headers[1], style: _tableHeaderStyle)),
+              Expanded(
+                flex: 2,
+                child: Text(headers[2], style: _tableHeaderStyle, textAlign: TextAlign.right),
+              ),
+            ],
+          ),
+        ),
+        // Data rows
+        ...rows.asMap().entries.map((entry) {
+          final i = entry.key;
+          final row = entry.value;
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: i.isEven ? Colors.white : _zebraStripe,
+              border: i == rows.length - 1
+                  ? Border.all(color: Colors.grey.shade200, width: 0)
+                  : null,
+            ),
+            child: Row(
+              children: [
+                Expanded(flex: 2, child: Text(row[0], style: _labelStyle)),
+                Expanded(flex: 3, child: Text(row[1], style: _valueStyle)),
+                Expanded(
+                  flex: 2,
+                  child: Text(row[2], style: _valueStyle, textAlign: TextAlign.right),
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  // ── Main build ─────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFEEEEEE),
       appBar: AppBar(
         title: Text(
           receipt.companyName,
@@ -582,313 +1066,336 @@ class ReceiptDetailPage extends StatelessWidget {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildCompanyHeader(),
-            const SizedBox(height: 20),
-            _buildCustomerInfo(),
-            const SizedBox(height: 20),
-            _buildReceiptInfo(),
-            const SizedBox(height: 20),
-            _buildItemsTable(),
-            if (receipt.adjustments?.isNotEmpty ?? false) ...[
-              const SizedBox(height: 20),
-              Text('Invoice Adjustments', style: receiptTextStyle),
-              _buildAdjustmentsTable(),
-            ],
-            if (receipt.payments?.isNotEmpty ?? false) ...[
-              const SizedBox(height: 20),
-              Text('Invoice Payments', style: receiptTextStyle),
-              _buildPaymentsTable(),
-            ],
-            const SizedBox(height: 20),
-            _buildTotalsTable(),
-          ],
+        padding: const EdgeInsets.all(12),
+        child: Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildCompanyHeader(),
+                _buildDashedDivider(),
+                _buildCustomerInfo(context),
+                _buildDashedDivider(),
+                _buildReceiptInfo(context),
+                _buildDashedDivider(),
+                _buildItemsTable(context),
+                if (receipt.adjustments?.isNotEmpty ?? false) ...[
+                  _buildDashedDivider(),
+                  _buildAdjustmentsTable(context),
+                ],
+                if (receipt.payments?.isNotEmpty ?? false) ...[
+                  _buildDashedDivider(),
+                  _buildPaymentsTable(context),
+                ],
+                _buildDashedDivider(),
+                _buildTotalsSection(context),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
+
+  // ── Company header ─────────────────────────────────────────────────
 
   Widget _buildCompanyHeader() {
     return Center(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
             receipt.companyName,
             textAlign: TextAlign.center,
-            style: receiptTextStyle,
+            style: _companyNameStyle,
           ),
-          const SizedBox(height: 5),
-          Text(
-            receipt.poBox ?? '',
-            textAlign: TextAlign.center,
-            style: receiptTextStyle,
-          ),
-          const SizedBox(height: 5),
-          Text(
-            'MOBILE: ${receipt.mobile}',
-            textAlign: TextAlign.center,
-            style: receiptTextStyle,
-          ),
-          const SizedBox(height: 5),
-          Text(
-            'TIN: ${receipt.tin}',
-            textAlign: TextAlign.center,
-            style: receiptTextStyle,
-          ),
-          const SizedBox(height: 5),
-          Text(
-            'VRN: ${receipt.vrn}',
-            textAlign: TextAlign.center,
-            style: receiptTextStyle,
-          ),
-          const SizedBox(height: 5),
-          Text(
-            'SERIAL NO: ${receipt.serialNumber}',
-            textAlign: TextAlign.center,
-            style: receiptTextStyle,
-          ),
-          const SizedBox(height: 5),
-          Text(
-            'UIN: ${receipt.uin}',
-            textAlign: TextAlign.center,
-            style: receiptTextStyle,
-          ),
-          const SizedBox(height: 5),
-          Text(
-            'TAX OFFICE: ${receipt.taxOffice}',
-            textAlign: TextAlign.center,
-            style: receiptTextStyle,
+          if (receipt.poBox != null && receipt.poBox!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.location_on_outlined, size: 14, color: _subtleGray),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    receipt.poBox!,
+                    textAlign: TextAlign.center,
+                    style: _metaStyle,
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 10),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              if (receipt.mobile != null)
+                _buildIconLabel(Icons.phone_outlined, receipt.mobile!),
+              if (receipt.tin != null)
+                _buildIconLabel(Icons.badge_outlined, 'TIN: ${receipt.tin}'),
+              if (receipt.vrn != null)
+                _buildIconLabel(Icons.tag, 'VRN: ${receipt.vrn}'),
+              if (receipt.serialNumber != null)
+                _buildIconLabel(Icons.qr_code, 'S/N: ${receipt.serialNumber}'),
+              if (receipt.uin != null)
+                _buildIconLabel(Icons.fingerprint, 'UIN: ${receipt.uin}'),
+              if (receipt.taxOffice != null)
+                _buildIconLabel(Icons.account_balance_outlined, receipt.taxOffice!),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildCustomerInfo() {
+  // ── Customer info ──────────────────────────────────────────────────
+
+  Widget _buildCustomerInfo(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'CUSTOMER NAME: ${receipt.customer?.name ?? ''}',
-          style: receiptTextStyle,
-        ),
-        const SizedBox(height: 5),
-        Text(
-          'CUSTOMER ID TYPE: ${receipt.customer?.idType ?? ''}',
-          style: receiptTextStyle,
-        ),
-        const SizedBox(height: 5),
-        Text(
-          'CUSTOMER ID: ${receipt.customer?.id ?? ''}',
-          style: receiptTextStyle,
-        ),
-        const SizedBox(height: 5),
-        Text(
-          'CUSTOMER MOBILE: ${receipt.customer?.mobile ?? 'n/a'}',
-          style: receiptTextStyle,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildReceiptInfo() {
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('RECEIPT NO:', style: receiptTextStyle),
-            Text(receipt.number ?? '', style: receiptTextStyle),
-          ],
-        ),
-        const SizedBox(height: 5),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('Z NUMBER:', style: receiptTextStyle),
-            Text(receipt.zNumber ?? '', style: receiptTextStyle),
-          ],
-        ),
-        const SizedBox(height: 5),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Text('DATE: ', style: receiptTextStyle),
-                Text(receipt.date ?? '', style: receiptTextStyle),
-              ],
-            ),
-            Row(
-              children: [
-                Text('TIME: ', style: receiptTextStyle),
-                Text(receipt.time ?? '', style: receiptTextStyle),
-              ],
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildItemsTable() {
-    return Table(
-      columnWidths: const {
-        0: FlexColumnWidth(3),
-        1: FlexColumnWidth(1),
-        2: FlexColumnWidth(2),
-      },
-      children: [
-        TableRow(
-          children: [
-            Text('DESCRIPTION', style: receiptTextStyle),
-            Text(
-              'QTY',
-              style: receiptTextStyle,
-              textAlign: TextAlign.right,
-            ),
-            Text(
-              'AMOUNT',
-              style: receiptTextStyle,
-              textAlign: TextAlign.right,
-            ),
-          ],
-        ),
-        if (receipt.items != null && receipt.items!.isNotEmpty)
-          ...receipt.items!.map((item) => TableRow(
+        _buildSectionTitle(L.tr(context, 'section_customer'), Icons.person_outline),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: _lightBg,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
             children: [
-              Text(item.description ?? '', style: receiptTextStyle),
-              Text(
-                '${item.quantity ?? 1}',
-                style: receiptTextStyle,
-                textAlign: TextAlign.right,
-              ),
-              Text(
-                moneyFormat.format(item.amount ?? 0),
-                style: receiptTextStyle,
-                textAlign: TextAlign.right,
+              _buildLabelValueRow(L.tr(context, 'label_name'), receipt.customer?.name ?? '-'),
+              _buildLabelValueRow(L.tr(context, 'label_id_type'), receipt.customer?.idType ?? '-'),
+              _buildLabelValueRow(L.tr(context, 'label_id'), receipt.customer?.id ?? '-'),
+              _buildLabelValueRow(L.tr(context, 'label_mobile'), receipt.customer?.mobile ?? 'n/a'),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Receipt info ───────────────────────────────────────────────────
+
+  Widget _buildReceiptInfo(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle(L.tr(context, 'section_receipt_details'), Icons.receipt_long_outlined),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: _lightBg,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            children: [
+              _buildLabelValueRow(L.tr(context, 'label_receipt_no'), receipt.number ?? '-'),
+              _buildLabelValueRow(L.tr(context, 'label_z_number'), receipt.zNumber ?? '-'),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calendar_today, size: 13, color: _subtleGray),
+                        const SizedBox(width: 4),
+                        Text(receipt.date ?? '-', style: _valueStyle),
+                      ],
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      const Icon(Icons.access_time, size: 13, color: _subtleGray),
+                      const SizedBox(width: 4),
+                      Text(receipt.time ?? '-', style: _valueStyle),
+                    ],
+                  ),
+                ],
               ),
             ],
-          )).toList(),
-      ],
-    );
-  }
-
-  Widget _buildTotalsTable() {
-    return Table(
-      children: [
-        _buildTableRow('TOTAL EXCL OF TAX:', receipt.totalExlcOfTax),
-        if (receipt.isTanesco) ...[
-          if (receipt.kwhCharge != null && receipt.kwhCharge! > 0)
-            _buildTableRow('KWH Charge:', receipt.kwhCharge),
-          if (receipt.kvaCharge != null && receipt.kvaCharge! > 0)
-            _buildTableRow('KVA Charge:', receipt.kvaCharge),
-          if (receipt.serviceCharge != null && receipt.serviceCharge! > 0)
-            _buildTableRow('Service Charge:', receipt.serviceCharge),
-          if (receipt.interestAmount != null && receipt.interestAmount! > 0)
-            _buildTableRow('Interest Amount:', receipt.interestAmount),
-          if (receipt.taxRate != null)
-            _buildTableRow('TAX RATE (${receipt.taxRate}%):', receipt.totalTax),
-        ],
-        _buildTableRow('TOTAL TAX:', receipt.totalTax),
-        if (receipt.isTanesco) ...[
-          if (receipt.reaCharge != null && receipt.reaCharge! > 0)
-            _buildTableRow('REA:', receipt.reaCharge),
-          if (receipt.ewuraCharge != null && receipt.ewuraCharge! > 0)
-            _buildTableRow('EWURA:', receipt.ewuraCharge),
-          if (receipt.propertyTax != null && receipt.propertyTax! > 0)
-            _buildTableRow('Property Tax:', receipt.propertyTax),
-        ],
-        _buildTableRow('TOTAL INCL OF TAX:', receipt.totalInclOfTax),
-      ],
-    );
-  }
-
-  Widget _buildAdjustmentsTable() {
-    return Table(
-      columnWidths: const {
-        0: FlexColumnWidth(1),
-        1: FlexColumnWidth(2),
-        2: FlexColumnWidth(1),
-      },
-      children: [
-        TableRow(
-          children: [
-            Text('Type', style: receiptTextStyle),
-            Text('Description', style: receiptTextStyle),
-            Text(
-              'Amount',
-              style: receiptTextStyle,
-              textAlign: TextAlign.right,
-            ),
-          ],
+          ),
         ),
-        ...receipt.adjustments!.map((adjustment) => TableRow(
-          children: [
-            Text(adjustment.type, style: receiptTextStyle),
-            Text(adjustment.description, style: receiptTextStyle),
-            Text(
-              moneyFormat.format(adjustment.amount),
-              style: receiptTextStyle,
-              textAlign: TextAlign.right,
-            ),
-          ],
-        )).toList(),
       ],
     );
   }
 
-  Widget _buildPaymentsTable() {
-    return Table(
-      columnWidths: const {
-        0: FlexColumnWidth(1),
-        1: FlexColumnWidth(2),
-        2: FlexColumnWidth(1),
-      },
+  // ── Items table ────────────────────────────────────────────────────
+
+  Widget _buildItemsTable(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        TableRow(
-          children: [
-            Text('Type', style: receiptTextStyle),
-            Text('Description', style: receiptTextStyle),
-            Text(
-              'Amount',
-              style: receiptTextStyle,
-              textAlign: TextAlign.right,
-            ),
-          ],
+        _buildSectionTitle(L.tr(context, 'section_items'), Icons.shopping_cart_outlined),
+        // Header row
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: _primaryColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+          ),
+          child: Row(
+            children: [
+              Expanded(flex: 3, child: Text(L.tr(context, 'table_description'), style: _tableHeaderStyle)),
+              Expanded(
+                flex: 1,
+                child: Text(L.tr(context, 'table_qty'), style: _tableHeaderStyle, textAlign: TextAlign.right),
+              ),
+              Expanded(
+                flex: 2,
+                child: Text(L.tr(context, 'table_amount'), style: _tableHeaderStyle, textAlign: TextAlign.right),
+              ),
+            ],
+          ),
         ),
-        ...receipt.payments!.map((payment) => TableRow(
-          children: [
-            Text(payment.type, style: receiptTextStyle),
-            Text(payment.description, style: receiptTextStyle),
-            Text(
-              moneyFormat.format(payment.amount),
-              style: receiptTextStyle,
-              textAlign: TextAlign.right,
-            ),
-          ],
-        )).toList(),
+        // Item rows
+        if (receipt.items != null && receipt.items!.isNotEmpty)
+          ...receipt.items!.asMap().entries.map((entry) {
+            final i = entry.key;
+            final item = entry.value;
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              color: i.isEven ? Colors.white : _zebraStripe,
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: Text(item.description ?? '', style: _valueStyle),
+                  ),
+                  Expanded(
+                    flex: 1,
+                    child: Text(
+                      '${item.quantity ?? 1}',
+                      style: _labelStyle,
+                      textAlign: TextAlign.right,
+                    ),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      moneyFormat.format(item.amount ?? 0),
+                      style: _valueStyle,
+                      textAlign: TextAlign.right,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
       ],
     );
   }
 
-  TableRow _buildTableRow(String label, double? value) {
-    return TableRow(
+  // ── Adjustments table ──────────────────────────────────────────────
+
+  Widget _buildAdjustmentsTable(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 5),
-          child: Text(label, style: receiptTextStyle),
+        _buildSectionTitle(L.tr(context, 'section_adjustments'), Icons.tune),
+        _buildStyledThreeColumnTable(
+          headers: [L.tr(context, 'table_type'), L.tr(context, 'table_description_lower'), L.tr(context, 'table_amount_lower')],
+          rows: receipt.adjustments!
+              .map((adj) => [
+                    adj.type,
+                    adj.description,
+                    moneyFormat.format(adj.amount),
+                  ])
+              .toList(),
         ),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 5),
-          child: Text(
-            value != null ? moneyFormat.format(value) : '-',
-            style: receiptTextStyle,
-            textAlign: TextAlign.right,
+      ],
+    );
+  }
+
+  // ── Payments table ─────────────────────────────────────────────────
+
+  Widget _buildPaymentsTable(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle(L.tr(context, 'section_payments'), Icons.payment),
+        _buildStyledThreeColumnTable(
+          headers: [L.tr(context, 'table_type'), L.tr(context, 'table_description_lower'), L.tr(context, 'table_amount_lower')],
+          rows: receipt.payments!
+              .map((pmt) => [
+                    pmt.type,
+                    pmt.description,
+                    moneyFormat.format(pmt.amount),
+                  ])
+              .toList(),
+        ),
+      ],
+    );
+  }
+
+  // ── Totals section ─────────────────────────────────────────────────
+
+  Widget _buildTotalsSection(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle(L.tr(context, 'section_totals'), Icons.summarize_outlined),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: _lightBg,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            children: [
+              _buildTotalRow(L.tr(context, 'total_excl_tax'), receipt.totalExlcOfTax),
+              if (receipt.isTanesco) ...[
+                if (receipt.kwhCharge != null && receipt.kwhCharge! > 0)
+                  _buildTotalRow(L.tr(context, 'kwh_charge'), receipt.kwhCharge),
+                if (receipt.kvaCharge != null && receipt.kvaCharge! > 0)
+                  _buildTotalRow(L.tr(context, 'kva_charge'), receipt.kvaCharge),
+                if (receipt.serviceCharge != null && receipt.serviceCharge! > 0)
+                  _buildTotalRow(L.tr(context, 'service_charge'), receipt.serviceCharge),
+                if (receipt.interestAmount != null && receipt.interestAmount! > 0)
+                  _buildTotalRow(L.tr(context, 'interest_amount'), receipt.interestAmount),
+                if (receipt.taxRate != null)
+                  _buildTotalRow('${L.tr(context, 'total_tax')} (${receipt.taxRate}%)', receipt.totalTax),
+              ],
+              _buildTotalRow(L.tr(context, 'total_tax'), receipt.totalTax),
+              if (receipt.isTanesco) ...[
+                if (receipt.reaCharge != null && receipt.reaCharge! > 0)
+                  _buildTotalRow(L.tr(context, 'rea_label'), receipt.reaCharge),
+                if (receipt.ewuraCharge != null && receipt.ewuraCharge! > 0)
+                  _buildTotalRow(L.tr(context, 'ewura_label'), receipt.ewuraCharge),
+                if (receipt.propertyTax != null && receipt.propertyTax! > 0)
+                  _buildTotalRow(L.tr(context, 'property_tax'), receipt.propertyTax),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF1565C0), Color(0xFF1E88E5)],
+            ),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(L.tr(context, 'total_label'), style: _grandTotalLabelStyle),
+              Text(
+                receipt.totalInclOfTax != null
+                    ? moneyFormat.format(receipt.totalInclOfTax)
+                    : '-',
+                style: _grandTotalStyle,
+              ),
+            ],
           ),
         ),
       ],
@@ -915,6 +1422,7 @@ class _ScanPageState extends State<ScanPage> {
   bool receiptUrlFound = false;
 
   String errMsg = '';
+  bool _errIsDuplicate = false;
 
   String _code = '';
   String _time = '';
@@ -946,7 +1454,7 @@ class _ScanPageState extends State<ScanPage> {
     var media = MediaQuery.of(context).size;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Scan'),
+        title: Text(L.tr(context, 'scan_title')),
       ),
       body: SizedBox(
         height: media.height * 1,
@@ -1033,7 +1541,7 @@ class _ScanPageState extends State<ScanPage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text('Please wait...'),
+                      Text(L.tr(context, 'please_wait')),
                       SizedBox(height: media.width * 0.05),
                       const CircularProgressIndicator(),
                     ],
@@ -1065,12 +1573,12 @@ class _ScanPageState extends State<ScanPage> {
                       Text(errMsg),
                       SizedBox(height: media.width * 0.05),
                       ElevatedButton(
-                        onPressed: errMsg == 'Receipt already scanned!'
+                        onPressed: _errIsDuplicate
                             ? _handleReceiptAlreadyExists
                             : _handleReceiptScrapeFailed,
-                        child: Text(errMsg == 'Receipt already scanned!'
-                            ? 'Close'
-                            : 'Try Again'),
+                        child: Text(_errIsDuplicate
+                            ? L.tr(context, 'close')
+                            : L.tr(context, 'try_again')),
                       ),
                     ],
                   ),
@@ -1108,13 +1616,15 @@ class _ScanPageState extends State<ScanPage> {
             } else {
               setState(() {
                 receiptUrlFound = false;
-                errMsg = 'Receipt Incorrect';
+                errMsg = L.tr(context, 'receipt_incorrect');
+              _errIsDuplicate = false;
               });
             }
           } catch (e) {
             setState(() {
               receiptUrlFound = false;
-              errMsg = 'Receipt Incorrect';
+              errMsg = L.tr(context, 'receipt_incorrect');
+              _errIsDuplicate = false;
             });
           } finally {
             _isProcessing = false;
@@ -1125,13 +1635,14 @@ class _ScanPageState extends State<ScanPage> {
   }
 
   Future<void> scrape(String code, String time, ReceiptProvider receiptProvider) async {
-    int retries = 3;
+    int retries = 2;
 
     // Check if receipt already exists (in provider list or scanned this session)
     if (receiptProvider.checkIfReceiptExists(code) || _scannedCodes.contains(code)) {
       setState(() {
         receiptUrlFound = false;
-        errMsg = 'Receipt already scanned!';
+        errMsg = L.tr(context, 'receipt_already_scanned');
+        _errIsDuplicate = true;
       });
       return;
     }
@@ -1148,13 +1659,13 @@ class _ScanPageState extends State<ScanPage> {
         print('Attempt ${i + 1} of $retries');
         print('Scraping receipt: code=$code, time=$time');
 
-        // First request to scraping server
+        // First request to scraping server (Puppeteer can be slow)
         http.Response response = await http.get(
           Uri.parse('${ApiConfig.scraperUrl}/receipt/$code/$time'),
           headers: {
             'Accept': 'application/json',
           },
-        ).timeout(const Duration(seconds: 30));
+        ).timeout(const Duration(seconds: 60));
 
         print('Response status: ${response.statusCode}');
         print('Response body: ${response.body}');
@@ -1168,7 +1679,8 @@ class _ScanPageState extends State<ScanPage> {
             if (i == retries - 1) {
               setState(() {
                 receiptUrlFound = false;
-                errMsg = 'Failed to get complete receipt data';
+                errMsg = L.tr(context, 'scan_failed_complete');
+                _errIsDuplicate = false;
               });
               return;
             }
@@ -1211,8 +1723,8 @@ class _ScanPageState extends State<ScanPage> {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(isDuplicate
-                      ? 'Receipt already exists'
-                      : 'Receipt scanned and uploaded successfully!'),
+                      ? L.tr(context, 'receipt_exists')
+                      : L.tr(context, 'scan_success')),
                   backgroundColor: isDuplicate ? Colors.orange : Colors.green,
                   duration: const Duration(seconds: 3),
                 ),
@@ -1246,7 +1758,8 @@ class _ScanPageState extends State<ScanPage> {
         if (i == retries - 1) {
           setState(() {
             receiptUrlFound = false;
-            errMsg = 'Request timed out. Please try again.';
+            errMsg = L.tr(context, 'request_timeout');
+            _errIsDuplicate = false;
           });
           return;
         }
@@ -1255,7 +1768,8 @@ class _ScanPageState extends State<ScanPage> {
         if (i == retries - 1) {
           setState(() {
             receiptUrlFound = false;
-            errMsg = 'Invalid data format received. Please try again.';
+            errMsg = L.tr(context, 'invalid_format');
+            _errIsDuplicate = false;
           });
           return;
         }
@@ -1340,6 +1854,7 @@ class Receipt {
 
   Customer? customer;
   List<Item>? items;
+  DateTime? createdAt;
 
   bool get isTanesco =>
       companyName.toLowerCase().contains('tanzania electric supply') ||
@@ -1377,6 +1892,7 @@ class Receipt {
     this.payments,
     this.customer,
     this.items,
+    this.createdAt,
   });
 
   factory Receipt.fromJson(Map<String, dynamic> json) {
@@ -1506,6 +2022,7 @@ class Receipt {
       payments: payments,
       customer: customer,
       items: items,
+      createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at']) : null,
     );
   }
 }
@@ -1914,29 +2431,26 @@ class ErrorWidget extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            getMessage(apiRequestStatus),
+            getMessage(context, apiRequestStatus),
             style: Theme.of(context).textTheme.bodyLarge,
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 10),
           ElevatedButton(
             onPressed: () => onRefresh(),
-            child: const Text('Try again'),
+            child: Text(L.tr(context, 'try_again')),
           ),
         ],
       ),
     );
   }
 
-  String getMessage(APIRequestStatus apiRequestStatus) {
-    String message = '';
-
+  String getMessage(BuildContext context, APIRequestStatus apiRequestStatus) {
     if (apiRequestStatus == APIRequestStatus.error) {
-      message = 'This page cannot be loaded right now\n Try again.';
+      return L.tr(context, 'page_load_error');
     } else if (apiRequestStatus == APIRequestStatus.networkError) {
-      message = 'Check your internet connection.';
+      return L.tr(context, 'check_internet');
     }
-
-    return message;
+    return '';
   }
 }
