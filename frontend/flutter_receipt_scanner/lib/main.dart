@@ -3,10 +3,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter_receipt_scanner/app_state.dart';
 import 'package:flutter_receipt_scanner/l10n.dart';
 import 'package:flutter_receipt_scanner/login_page.dart';
+import 'package:flutter_receipt_scanner/main_shell.dart';
 import 'package:flutter_receipt_scanner/utils/api_request_status.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -34,6 +34,7 @@ class ApiConfig {
   static String get receiptsUrl => '$baseUrl/receipts';
   static String get addReceiptUrl => '$baseUrl/add_receipt';
   static String get loginUrl => '$baseUrl/login';
+  static String get dashboardUrl => '$baseUrl/dashboard';
 }
 
 void main() async {
@@ -90,12 +91,12 @@ class MyApp extends StatelessWidget {
             ),
             themeMode: state.themeMode,
             home: isLoggedIn
-                ? const MyHomePage()
+                ? const MainShell()
                 : LoginPage(hasSavedCredentials: hasSavedCredentials),
             routes: {
               'scan': (context) => const ScanPage(),
               'login': (context) => const LoginPage(),
-              'home': (context) => const MyHomePage(),
+              'home': (context) => const MainShell(),
             },
           );
         },
@@ -173,6 +174,10 @@ class ReceiptCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor = isDark ? Colors.white : const Color(0xFF212121);
+    final metaColor = isDark ? Colors.grey.shade400 : _subtleGray;
+
     final initials = receipt.companyName
         .split(' ')
         .where((w) => w.isNotEmpty)
@@ -205,7 +210,7 @@ class ReceiptCard extends StatelessWidget {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: _primaryColor.withValues(alpha: 0.1),
+                    color: _primaryColor.withValues(alpha: isDark ? 0.2 : 0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   alignment: Alignment.center,
@@ -226,10 +231,10 @@ class ReceiptCard extends StatelessWidget {
                     children: [
                       Text(
                         receipt.companyName,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF212121),
+                          color: titleColor,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -237,18 +242,18 @@ class ReceiptCard extends StatelessWidget {
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          const Icon(Icons.calendar_today, size: 12, color: _subtleGray),
+                          Icon(Icons.calendar_today, size: 12, color: metaColor),
                           const SizedBox(width: 3),
                           Text(
                             receipt.date ?? '',
-                            style: const TextStyle(fontSize: 11, color: _subtleGray),
+                            style: TextStyle(fontSize: 11, color: metaColor),
                           ),
                           const SizedBox(width: 10),
-                          const Icon(Icons.access_time, size: 12, color: _subtleGray),
+                          Icon(Icons.access_time, size: 12, color: metaColor),
                           const SizedBox(width: 3),
                           Text(
                             receipt.time ?? '',
-                            style: const TextStyle(fontSize: 11, color: _subtleGray),
+                            style: TextStyle(fontSize: 11, color: metaColor),
                           ),
                         ],
                       ),
@@ -256,12 +261,12 @@ class ReceiptCard extends StatelessWidget {
                         const SizedBox(height: 2),
                         Row(
                           children: [
-                            const Icon(Icons.tag, size: 12, color: _subtleGray),
+                            Icon(Icons.tag, size: 12, color: metaColor),
                             const SizedBox(width: 3),
                             Flexible(
                               child: Text(
                                 receipt.number!,
-                                style: const TextStyle(fontSize: 11, color: _subtleGray),
+                                style: TextStyle(fontSize: 11, color: metaColor),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -286,9 +291,9 @@ class ReceiptCard extends StatelessWidget {
                           color: _primaryColor,
                         ),
                       ),
-                      const Text(
+                      Text(
                         'TZS',
-                        style: TextStyle(fontSize: 10, color: _subtleGray),
+                        style: TextStyle(fontSize: 10, color: metaColor),
                       ),
                     ],
                     if (receipt.createdAt != null)
@@ -296,13 +301,13 @@ class ReceiptCard extends StatelessWidget {
                         padding: const EdgeInsets.only(top: 4),
                         child: Text(
                           _timeAgo(receipt.createdAt!),
-                          style: const TextStyle(fontSize: 10, color: _subtleGray),
+                          style: TextStyle(fontSize: 10, color: metaColor),
                         ),
                       ),
                   ],
                   ),
                 const SizedBox(width: 4),
-                const Icon(Icons.chevron_right, size: 20, color: _subtleGray),
+                Icon(Icons.chevron_right, size: 20, color: metaColor),
               ],
             ),
           ),
@@ -312,11 +317,20 @@ class ReceiptCard extends StatelessWidget {
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key});
+class ReceiptListPage extends StatefulWidget {
+  const ReceiptListPage({
+    super.key,
+    this.userName = '',
+    this.userEmail = '',
+    this.isOfflineMode = false,
+  });
+
+  final String userName;
+  final String userEmail;
+  final bool isOfflineMode;
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<ReceiptListPage> createState() => _ReceiptListPageState();
 }
 
 // This will help us check the login state more easily
@@ -350,60 +364,18 @@ class LoginState {
   }
 }
 
-class _MyHomePageState extends State<MyHomePage> {
+class _ReceiptListPageState extends State<ReceiptListPage> {
   final ScrollController _scrollController = ScrollController();
   DateTime? _startDate;
   DateTime? _endDate;
   final TextEditingController _searchController = TextEditingController();
-  
-  // User info
-  String _userName = "";
-  String _userEmail = "";
-  bool _isOfflineMode = false;
-  
+
   @override
   void initState() {
     super.initState();
-    debugPrint('initState called');
-    
-    // Load user info and initial data
-    SchedulerBinding.instance.addPostFrameCallback((_) async {
-      debugPrint('Post frame callback triggered');
-      
-      // Get user info
-      final userInfo = await LoginState.getUserInfo();
-      setState(() {
-        _userName = userInfo['name'] ?? 'Guest User';
-        _userEmail = userInfo['email'] ?? 'No email';
-        _isOfflineMode = userInfo['isOfflineMode'] ?? false;
-      });
-      
-      // Show login status toast message
-      _showLoginStatusToast();
-      
-      // Load receipts
-      Provider.of<ReceiptProvider>(context, listen: false).fetchReceipts();
-    });
-    
-    // Add scroll listener for pagination
     _scrollController.addListener(_scrollListener);
   }
-  
-  void _showLoginStatusToast() {
-    final scaffold = ScaffoldMessenger.of(context);
-    final loggedInAs = L.tr(context, 'logged_in_as');
-    final offlineLabel = L.tr(context, 'offline_mode');
-    scaffold.showSnackBar(
-      SnackBar(
-        content: _isOfflineMode
-            ? Text('$loggedInAs $_userName ($offlineLabel)')
-            : Text('$loggedInAs $_userName ($_userEmail)'),
-        backgroundColor: _isOfflineMode ? Colors.orange : const Color(0xFF1565C0),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-  
+
   void _scrollListener() {
     if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
       // We're approaching the end of the list, load more data
@@ -451,95 +423,29 @@ class _MyHomePageState extends State<MyHomePage> {
     Provider.of<ReceiptProvider>(context, listen: false).fetchReceipts();
   }
 
-  void _logout() async {
-    final shouldLogout = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(L.tr(context, 'confirm_logout')),
-        content: Text(L.tr(context, 'logout_confirm_msg')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(L.tr(context, 'cancel')),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(L.tr(context, 'logout')),
-          ),
-        ],
-      ),
-    ) ?? false;
-
-    if (!shouldLogout || !mounted) return;
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
-
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(L.tr(context, 'logged_out')),
-        backgroundColor: Colors.blue,
-        duration: const Duration(seconds: 2),
-      ),
-    );
-
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (context) => const LoginPage(),
-      ),
-    );
-  }
-
   static const Color _primaryColor = Color(0xFF1565C0);
 
   @override
   Widget build(BuildContext context) {
     final bool hasActiveFilters = _startDate != null || _searchController.text.trim().isNotEmpty;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final headerBg = isDark ? const Color(0xFF1A1A2E) : _primaryColor;
+    final searchFill = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.white;
+    final searchHint = isDark ? Colors.grey.shade500 : Colors.grey.shade400;
+    final dateBg = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.white.withValues(alpha: 0.15);
+    final dateBorder = isDark
+        ? Colors.white.withValues(alpha: 0.1)
+        : Colors.white24;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
-      appBar: AppBar(
-        backgroundColor: _primaryColor,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              L.tr(context, 'app_title'),
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-            ),
-            if (_userEmail.isNotEmpty)
-              Text(
-                _isOfflineMode
-                    ? '${L.tr(context, 'offline_mode')} - $_userName'
-                    : _userEmail,
-                style: const TextStyle(fontSize: 11, color: Colors.white70),
-              ),
-          ],
-        ),
-        actions: [
-          if (_isOfflineMode)
-            const Padding(
-              padding: EdgeInsets.all(8.0),
-              child: Icon(Icons.cloud_off, color: Colors.orangeAccent, size: 20),
-            ),
-          IconButton(
-            icon: const Icon(Icons.logout, size: 22),
-            onPressed: _logout,
-            tooltip: '',
-          ),
-        ],
-      ),
-      body: Column(
+    return Column(
         children: [
-          // Search and filter section with blue accent background
+          // Search and filter section
           Container(
-            decoration: const BoxDecoration(
-              color: _primaryColor,
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
+            decoration: BoxDecoration(
+              color: headerBg,
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
             ),
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
             child: Column(
@@ -547,14 +453,19 @@ class _MyHomePageState extends State<MyHomePage> {
                 // Search bar
                 TextField(
                   controller: _searchController,
-                  style: const TextStyle(fontSize: 14),
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
                   decoration: InputDecoration(
                     hintText: L.tr(context, 'search_hint'),
-                    hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
-                    prefixIcon: const Icon(Icons.search, size: 20),
+                    hintStyle: TextStyle(color: searchHint, fontSize: 13),
+                    prefixIcon: Icon(Icons.search, size: 20,
+                        color: isDark ? Colors.grey.shade400 : null),
                     suffixIcon: _searchController.text.isNotEmpty
                         ? IconButton(
-                            icon: const Icon(Icons.clear, size: 18),
+                            icon: Icon(Icons.clear, size: 18,
+                                color: isDark ? Colors.grey.shade400 : null),
                             onPressed: () {
                               _searchController.clear();
                               _applyDateFilter();
@@ -562,11 +473,26 @@ class _MyHomePageState extends State<MyHomePage> {
                           )
                         : null,
                     filled: true,
-                    fillColor: Colors.white,
+                    fillColor: searchFill,
                     contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide.none,
+                      borderSide: isDark
+                          ? BorderSide(color: Colors.white.withValues(alpha: 0.1))
+                          : BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: isDark
+                          ? BorderSide(color: Colors.white.withValues(alpha: 0.1))
+                          : BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(
+                        color: isDark ? Colors.white24 : _primaryColor,
+                        width: 1.5,
+                      ),
                     ),
                   ),
                   onSubmitted: (_) => _applyDateFilter(),
@@ -583,9 +509,9 @@ class _MyHomePageState extends State<MyHomePage> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.15),
+                            color: dateBg,
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: Colors.white24),
+                            border: Border.all(color: dateBorder),
                           ),
                           child: Row(
                             children: [
@@ -615,7 +541,7 @@ class _MyHomePageState extends State<MyHomePage> {
                         child: Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.15),
+                            color: dateBg,
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: const Icon(Icons.filter_alt_off, size: 18, color: Colors.white70),
@@ -631,6 +557,7 @@ class _MyHomePageState extends State<MyHomePage> {
           // Receipt count indicator
           Consumer<ReceiptProvider>(
             builder: (context, provider, _) {
+              final countColor = isDark ? Colors.grey.shade500 : const Color(0xFF757575);
               if (provider.apiRequestStatus == APIRequestStatus.loaded &&
                   provider.receipts.isNotEmpty) {
                 return Padding(
@@ -639,16 +566,16 @@ class _MyHomePageState extends State<MyHomePage> {
                     children: [
                       Text(
                         '${provider.receipts.length} ${provider.receipts.length == 1 ? L.tr(context, 'receipt_count') : L.tr(context, 'receipts_count')}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
-                          color: Color(0xFF757575),
+                          color: countColor,
                         ),
                       ),
                       if (provider.hasMoreData)
-                        const Text(
+                        Text(
                           ' +',
-                          style: TextStyle(fontSize: 12, color: Color(0xFF757575)),
+                          style: TextStyle(fontSize: 12, color: countColor),
                         ),
                     ],
                   ),
@@ -665,22 +592,7 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: _primaryColor,
-        foregroundColor: Colors.white,
-        onPressed: () =>
-            Navigator.pushNamed(context, ScanPage.route).then((value) async {
-              await Provider.of<ReceiptProvider>(context, listen: false)
-                  .fetchReceipts(
-                    startDate: _startDate,
-                    endDate: _endDate,
-                    searchTerm: _searchController.text.trim(),
-                  );
-            }),
-        child: const Icon(Icons.qr_code_scanner_rounded),
-      ),
-    );
+      );
   }
 
   @override
@@ -2110,6 +2022,42 @@ class Item {
   }
 }
 
+class DashboardData {
+  final int totalReceipts;
+  final double totalAmount;
+  final int todayScans;
+  final double avgValue;
+  final double totalTax;
+  final List<Receipt> recentReceipts;
+
+  const DashboardData({
+    this.totalReceipts = 0,
+    this.totalAmount = 0,
+    this.todayScans = 0,
+    this.avgValue = 0,
+    this.totalTax = 0,
+    this.recentReceipts = const [],
+  });
+
+  factory DashboardData.fromJson(Map<String, dynamic> json) {
+    final stats = json['stats'] ?? {};
+    final recentList = json['recent_receipts'] as List<dynamic>? ?? [];
+    return DashboardData(
+      totalReceipts: stats['total_receipts'] ?? 0,
+      totalAmount: (stats['total_amount'] ?? 0).toDouble(),
+      todayScans: stats['today_scans'] ?? 0,
+      avgValue: (stats['avg_value'] ?? 0).toDouble(),
+      totalTax: (stats['total_tax'] ?? 0).toDouble(),
+      recentReceipts: recentList
+          .map((r) {
+            try { return Receipt.fromJson(r); } catch (_) { return null; }
+          })
+          .whereType<Receipt>()
+          .toList(),
+    );
+  }
+}
+
 class ReceiptProvider extends ChangeNotifier {
   List<Receipt> _receipts = [];
   APIRequestStatus _apiRequestStatus = APIRequestStatus.loading;
@@ -2118,17 +2066,23 @@ class ReceiptProvider extends ChangeNotifier {
   bool _isLoadingMore = false;
   bool _hasMoreData = true;
   int _currentPage = 1;
-  
+
+  // Dashboard state
+  DashboardData _dashboardData = const DashboardData();
+  APIRequestStatus _dashboardStatus = APIRequestStatus.loading;
+
   List<Receipt> get receipts => _receipts;
   APIRequestStatus get apiRequestStatus => _apiRequestStatus;
   String get lastError => _lastError;
   bool get isLoading => _isLoading;
-  bool get isLoadingMore => _isLoadingMore; 
+  bool get isLoadingMore => _isLoadingMore;
   bool get hasMoreData => _hasMoreData;
+  DashboardData get dashboardData => _dashboardData;
+  APIRequestStatus get dashboardStatus => _dashboardStatus;
 
   ReceiptProvider() {
     debugPrint('ReceiptProvider initialized');
-    // We'll fetch receipts from the MyHomePage instead to avoid duplicate calls
+    // We'll fetch receipts from MainShell instead to avoid duplicate calls
   }
 
   Future<void> fetchReceipts({DateTime? startDate, DateTime? endDate, String? searchTerm}) async {
@@ -2266,7 +2220,68 @@ class ReceiptProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
-  
+
+  Future<void> fetchDashboard({DateTime? startDate, DateTime? endDate}) async {
+    debugPrint('Starting fetchDashboard()');
+    _dashboardStatus = APIRequestStatus.loading;
+    notifyListeners();
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      // Offline mode: compute from local data
+      if (token != null && token.startsWith('offline_')) {
+        _dashboardData = DashboardData(
+          totalReceipts: _receipts.length,
+          totalAmount: _receipts.fold(0, (s, r) => s + (r.totalInclOfTax ?? 0)),
+          todayScans: _receipts.where((r) => r.date == DateFormat('dd/MM/yyyy').format(DateTime.now())).length,
+          avgValue: _receipts.isEmpty ? 0 : _receipts.fold<double>(0, (s, r) => s + (r.totalInclOfTax ?? 0)) / _receipts.length,
+          totalTax: _receipts.fold(0, (s, r) => s + (r.totalTax ?? 0)),
+          recentReceipts: _receipts.take(3).toList(),
+        );
+        _dashboardStatus = APIRequestStatus.loaded;
+        notifyListeners();
+        return;
+      }
+
+      // Build URL with date range
+      final start = startDate ?? DateTime(DateTime.now().year, DateTime.now().month, 1);
+      final end = endDate ?? DateTime.now();
+      final startStr = DateFormat('yyyy-MM-dd').format(start);
+      final endStr = DateFormat('yyyy-MM-dd').format(end);
+      final url = '${ApiConfig.dashboardUrl}?start_date=$startStr&end_date=$endStr';
+
+      debugPrint('Dashboard API call to: $url');
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': token != null ? 'Bearer $token' : '',
+        },
+      ).timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body);
+        _dashboardData = DashboardData.fromJson(json);
+        _dashboardStatus = APIRequestStatus.loaded;
+        debugPrint('Dashboard loaded: ${_dashboardData.totalReceipts} receipts');
+      } else {
+        _dashboardStatus = APIRequestStatus.error;
+        debugPrint('Dashboard API error: ${response.statusCode}');
+      }
+    } on SocketException {
+      _dashboardStatus = APIRequestStatus.networkError;
+    } on TimeoutException {
+      _dashboardStatus = APIRequestStatus.networkError;
+    } catch (e) {
+      debugPrint('Dashboard error: $e');
+      _dashboardStatus = APIRequestStatus.error;
+    } finally {
+      notifyListeners();
+    }
+  }
+
   Future<void> loadMoreReceipts({DateTime? startDate, DateTime? endDate, String? searchTerm}) async {
     if (_isLoadingMore || !_hasMoreData) return;
     

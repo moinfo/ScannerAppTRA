@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_receipt_scanner/app_state.dart';
 import 'package:flutter_receipt_scanner/l10n.dart';
 import 'package:flutter_receipt_scanner/main.dart';
+import 'package:flutter_receipt_scanner/main_shell.dart';
 
 class LoginPage extends StatefulWidget {
   final bool hasSavedCredentials;
@@ -57,7 +58,7 @@ class _LoginPageState extends State<LoginPage> {
       if (!didAuth || !mounted) return;
 
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MyHomePage()),
+        MaterialPageRoute(builder: (_) => const MainShell()),
       );
     } catch (e) {
       if (!mounted) return;
@@ -128,7 +129,7 @@ class _LoginPageState extends State<LoginPage> {
           Future.delayed(const Duration(seconds: 1), () {
             if (!mounted) return;
             Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => const MyHomePage()),
+              MaterialPageRoute(builder: (_) => const MainShell()),
             );
           });
         } catch (_) {

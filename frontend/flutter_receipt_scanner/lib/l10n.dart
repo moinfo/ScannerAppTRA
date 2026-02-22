@@ -327,6 +327,86 @@ class L {
       'en': 'Check your internet connection.',
       'sw': 'Angalia muunganisho wako wa intaneti.',
     },
+
+    // ── Navigation ──────────────────────────────────────────────────
+    'nav_dashboard': {
+      'en': 'Dashboard',
+      'sw': 'Dashibodi',
+    },
+    'nav_receipts': {
+      'en': 'Receipts',
+      'sw': 'Risiti',
+    },
+    'nav_scan': {
+      'en': 'Scan',
+      'sw': 'Skani',
+    },
+    'nav_profile': {
+      'en': 'Profile',
+      'sw': 'Wasifu',
+    },
+
+    // ── Dashboard ───────────────────────────────────────────────────
+    'stat_total_receipts': {
+      'en': 'Total Receipts',
+      'sw': 'Risiti Zote',
+    },
+    'stat_total_amount': {
+      'en': 'Total Amount',
+      'sw': 'Kiasi Chote',
+    },
+    'stat_today_scans': {
+      'en': "Today's Scans",
+      'sw': 'Leo',
+    },
+    'stat_avg_value': {
+      'en': 'Avg Value',
+      'sw': 'Wastani',
+    },
+    'stat_total_tax': {
+      'en': 'Total Tax',
+      'sw': 'Kodi Yote',
+    },
+    'stat_no_data': {
+      'en': 'No data yet',
+      'sw': 'Bado hakuna taarifa',
+    },
+    'dashboard_recent': {
+      'en': 'Recent Activity',
+      'sw': 'Shughuli za Karibuni',
+    },
+
+    // ── Profile ─────────────────────────────────────────────────────
+    'profile_title': {
+      'en': 'Profile',
+      'sw': 'Wasifu',
+    },
+    'profile_theme': {
+      'en': 'Dark Mode',
+      'sw': 'Hali ya Giza',
+    },
+    'profile_language': {
+      'en': 'Language',
+      'sw': 'Lugha',
+    },
+    'profile_app_version': {
+      'en': 'App Version',
+      'sw': 'Toleo la Programu',
+    },
+    'profile_about': {
+      'en': 'About',
+      'sw': 'Kuhusu',
+    },
+
+    // ── Dashboard date range ───────────────────────────────────────────
+    'this_month': {
+      'en': 'This Month',
+      'sw': 'Mwezi Huu',
+    },
+    'dashboard_date_range': {
+      'en': 'Filter by date range',
+      'sw': 'Chuja kwa tarehe',
+    },
   };
 
   /// Get a translated string for the current locale.
