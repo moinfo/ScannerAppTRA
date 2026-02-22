@@ -910,6 +910,7 @@ class _ScanPageState extends State<ScanPage> {
   MobileScannerController controller = MobileScannerController();
   bool frozen = false;
   bool _isProcessing = false;
+  final Set<String> _scannedCodes = {};
 
   bool receiptUrlFound = false;
 
@@ -1126,8 +1127,8 @@ class _ScanPageState extends State<ScanPage> {
   Future<void> scrape(String code, String time, ReceiptProvider receiptProvider) async {
     int retries = 3;
 
-    // Check if receipt already exists
-    if (receiptProvider.checkIfReceiptExists(code)) {
+    // Check if receipt already exists (in provider list or scanned this session)
+    if (receiptProvider.checkIfReceiptExists(code) || _scannedCodes.contains(code)) {
       setState(() {
         receiptUrlFound = false;
         errMsg = 'Receipt already scanned!';
@@ -1190,6 +1191,9 @@ class _ScanPageState extends State<ScanPage> {
           print('Lemuru server response body: ${serverResponse.body}');
 
           if (serverResponse.statusCode == 200) {
+            // Track this code to prevent duplicate scans
+            _scannedCodes.add(code);
+
             setState(() {
               receiptUrlFound = false;
               _code = '';
@@ -1197,8 +1201,38 @@ class _ScanPageState extends State<ScanPage> {
               errMsg = '';
             });
 
+            // Refresh the receipt list
+            await receiptProvider.fetchReceipts();
+
             if (mounted) {
-              Navigator.of(context).pop();
+              final serverData = jsonDecode(serverResponse.body);
+              final isDuplicate = serverData['duplicate'] == true;
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(isDuplicate
+                      ? 'Receipt already exists'
+                      : 'Receipt scanned and uploaded successfully!'),
+                  backgroundColor: isDuplicate ? Colors.orange : Colors.green,
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+
+              // Build receipt from scraped data and open detail page
+              try {
+                final receiptData = responseBody is List ? Map<String, dynamic>.from(responseBody[0]) : Map<String, dynamic>.from(responseBody);
+                receiptData['id'] = serverData['receipt_id'] ?? 0;
+                final receipt = Receipt.fromJson(receiptData);
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(
+                    builder: (context) => ReceiptDetailPage(receipt: receipt),
+                  ),
+                );
+              } catch (e) {
+                // If parsing fails, just go back to the list
+                print('Could not parse receipt for detail view: $e');
+                Navigator.of(context).pop();
+              }
             }
             return;
           } else {
