@@ -1,5 +1,5 @@
 const puppeteer = require('puppeteer')
-  const scrapeTra = async (code, time) => {
+  const scrapeOnce = async (code, time) => {
       console.log("start puppeteer " + (new Date()).getTime());
       const hrs = time.slice(0, 2)
       const minutes = time.slice(2, 4)
@@ -21,9 +21,9 @@ const puppeteer = require('puppeteer')
                   await page.waitForSelector("button[type='submit']", { timeout: 15000 });
                   await page.click("button[type='submit']");
                   await page.waitForSelector("#HH", { visible: true, timeout: 15000 })
-                  page.select('#HH', hrs);
-                  page.select('#MM', minutes);
-                  page.select('#SS', seconds);
+                  await page.select('#HH', hrs);
+                  await page.select('#MM', minutes);
+                  await page.select('#SS', seconds);
                   await page.waitForSelector("button[type='button']", { timeout: 15000 });
                   await page.click("button[type='button']");
                   await page.waitForSelector(".invoice-header", { timeout: 15000 });
@@ -44,33 +44,33 @@ const puppeteer = require('puppeteer')
                   }
                   return '';
               }
-              const hdr = document.querySelectorAll(".invoice-header b");
-              const info = document.querySelectorAll(".invoice-info .invoice-col b");
               const tbodies = document.querySelectorAll('table tbody');
-              const companyName = hdr[0] ? hdr[0].innerText.trim() : '';
-              const poBox = info[0] ? info[0].innerText.trim() : '';
-              const mobile = info[1] ? getValueAfterBold(info[1]) : '';
-              const tin = info[2] ? getValueAfterBold(info[2]) : '';
-              const vrn = info[3] ? getValueAfterBold(info[3]) : '';
-              const serialNo = info[4] ? getValueAfterBold(info[4]) : '';
-              const uin = info[5] ? getValueAfterBold(info[5]) : '';
-              const taxOffice = info[6] ? getValueAfterBold(info[6]) : '';
-              const customerName = hdr[1] ? getValueAfterBold(hdr[1]) : '';
-              const customerIdType = hdr[2] ? getValueAfterBold(hdr[2]) : '';
-              const customerId = hdr[3] ? getValueAfterBold(hdr[3]) : '';
-              const customerMobile = hdr[4] ? getValueAfterBold(hdr[4]) : '';
-              const receiptNumber = hdr[5] ? getValueAfterBold(hdr[5]) : '';
-              const zNumber = hdr[6] ? getValueAfterBold(hdr[6]) : '';
-              const receiptDate = hdr[7] ? getValueAfterBold(hdr[7]) : '';
-              const receiptTime = hdr[8] ? getValueAfterBold(hdr[8]) : '';
+              const fields = {};
+              document.querySelectorAll('.invoice-header b, .invoice-info b').forEach(b => {
+                  const key = b.textContent.replace(/:/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
+                  if (key && !(key in fields)) fields[key] = getValueAfterBold(b);
+              });
+              const f = k => fields[k] || '';
+              const titleLines = Array.from((document.querySelector('.invoice-header') || document).querySelectorAll('h4 b')).map(e => e.textContent.trim()).filter(Boolean);
+              const companyName = titleLines[0] || '';
+              const poBox = titleLines.slice(1).join(', ');
+              const mobile = f('MOBILE');
+              const tin = f('TIN');
+              const vrn = f('VRN');
+              const serialNo = f('SERIAL NO');
+              const uin = f('UIN');
+              const taxOffice = f('TAX OFFICE');
+              const customerName = f('CUSTOMER NAME');
+              const customerIdType = f('CUSTOMER ID TYPE');
+              const customerId = f('CUSTOMER ID');
+              const customerMobile = f('CUSTOMER MOBILE');
+              const receiptNumber = f('RECEIPT NO');
+              const zNumber = f('Z NUMBER');
+              const receiptDate = f('RECEIPT DATE');
+              const receiptTime = f('RECEIPT TIME');
               let receiptVerificationCode = '';
-              try {
-                  const headers = document.querySelectorAll(".invoice-header");
-                  if (headers[3] && headers[3].children[1]) receiptVerificationCode = headers[3].children[1].firstChild.innerText.trim();
-              } catch (e) {
-                  const m = document.body.innerText.match(/RECEIPT VERIFICATION CODE\s*\n\s*(\S+)/);
-                  if (m) receiptVerificationCode = m[1];
-              }
+              const m = document.body.innerText.match(/RECEIPT VERIFICATION CODE\s*\n\s*(\S+)/);
+              if (m) receiptVerificationCode = m[1];
               let itemsTable = null, totalsTable = null;
               for (let i = 0; i < tbodies.length; i++) {
                   const r = tbodies[i].children[0];
@@ -111,5 +111,20 @@ const puppeteer = require('puppeteer')
           await browser.close()
           throw error
       }
+  }
+  const RETRYABLE = /net::ERR_(?!CERT)|Navigation timeout|TimeoutError/
+  const scrapeTra = async (code, time, attempts = 3) => {
+      let lastErr
+      for (let i = 1; i <= attempts; i++) {
+          try {
+              return await scrapeOnce(code, time)
+          } catch (err) {
+              lastErr = err
+              console.log(`Attempt ${i}/${attempts} failed: ${err.message}`)
+              if (i === attempts || !RETRYABLE.test(String(err))) break
+              await new Promise(r => setTimeout(r, 1500 * i))
+          }
+      }
+      throw lastErr
   }
   module.exports.scrapeTra = scrapeTra
